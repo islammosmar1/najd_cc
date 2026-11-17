@@ -1,0 +1,9 @@
+.git
+.next
+.local
+node_modules
+.env*
+!.env.example
+test-results
+playwright-report
+.local-lint.json

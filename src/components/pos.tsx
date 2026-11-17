@@ -1,0 +1,480 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import {
+  Barcode,
+  Camera,
+  Minus,
+  Plus,
+  ShoppingBag,
+  Trash2,
+  Printer,
+} from "lucide-react";
+import { toast } from "sonner";
+import {
+  addScan,
+  cartTotal,
+  ScanGate,
+  OperationError,
+  type CartLine,
+  type Variant,
+} from "@/lib/domain";
+import { money } from "@/lib/utils";
+import { Button } from "./ui/button";
+import { Modal } from "./modal";
+import dynamic from "next/dynamic";
+const CameraScanner = dynamic(
+  () => import("./camera-scanner").then((m) => m.CameraScanner),
+  { ssr: false },
+);
+type Receipt = {
+  id: string;
+  total: number;
+  tax: number;
+  cash: number;
+  lines: CartLine[];
+};
+export function POS({
+  products,
+  stock,
+  branch,
+  shift,
+  taxBps,
+  online,
+  enabled,
+  checkout,
+}: {
+  products: Variant[];
+  stock: (id: string) => number;
+  branch: string;
+  shift: string;
+  taxBps: number;
+  online: boolean;
+  enabled: boolean;
+  checkout: (p: Record<string, unknown>) => Promise<Record<string, unknown>>;
+}) {
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [search, setSearch] = useState("");
+  const [code, setCode] = useState("");
+  const [discount, setDiscount] = useState(0);
+  const [cash, setCash] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [hasPending, setHasPending] = useState(false);
+  const [camera, setCamera] = useState(false);
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [pay, setPay] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const gate = useRef(new ScanGate());
+  const key = useRef<string | null>(null);
+  const lock = useRef(false);
+  const pending = useRef<Record<string, unknown> | null>(null);
+  const totals = cartTotal(cart, discount, taxBps);
+  useEffect(() => {
+    function hot(e: KeyboardEvent) {
+      if (e.key === "F2") {
+        e.preventDefault();
+        input.current?.focus();
+      }
+      if (e.key === "F8") {
+        e.preventDefault();
+        setPay(true);
+      }
+    }
+    window.addEventListener("keydown", hot);
+    return () => window.removeEventListener("keydown", hot);
+  }, []);
+  function add(v: Variant) {
+    if (pending.current) {
+      toast.error("أعد محاولة تأكيد الطلب المعلق أولاً");
+      return;
+    }
+    try {
+      setCart(addScan(cart, v, stock(v.id)));
+      key.current = null;
+      input.current?.focus();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+  function scan(text: string) {
+    if (!gate.current.accept(text, Date.now())) return;
+    const v = products.find((p) => p.barcode === text.trim() && p.active);
+    if (!v) {
+      toast.error("الباركود غير معروف. ابحث عن المنتج أو أضفه أولاً.");
+      return;
+    }
+    if ((cart.find((l) => l.variant.id === v.id)?.qty ?? 0) >= stock(v.id)) {
+      toast.error("الكمية المتوفرة غير كافية");
+      return;
+    }
+    add(v);
+    setCode("");
+    setCamera(false);
+    input.current?.focus();
+  }
+  async function finalize() {
+    if (lock.current) return;
+    if (!online || !enabled || !shift) {
+      toast.error("يلزم اتصال ووردية مفتوحة لإتمام البيع");
+      return;
+    }
+    if (!cart.length || cash < totals.total || discount > totals.subtotal) {
+      toast.error("راجع السلة والمبلغ المدفوع");
+      return;
+    }
+    lock.current = true;
+    setBusy(true);
+    key.current ??= crypto.randomUUID();
+    pending.current ??= {
+      branch_id: branch,
+      shift_id: shift,
+      key: key.current,
+      items: cart.map((l) => ({
+        variant_id: l.variant.id,
+        qty: l.qty,
+        discount: l.discount,
+      })),
+      discount,
+      cash,
+    };
+    setHasPending(true);
+    try {
+      const r = await checkout(pending.current);
+      setReceipt({
+        id: String(r.id),
+        total: Number(r.total),
+        tax: Number(r.tax ?? 0),
+        cash,
+        lines: Array.isArray(r.items)
+          ? r.items.map((item) => ({
+              variant: {
+                ...cart.find((l) => l.variant.id === item.variant_id)!.variant,
+                name: item.name,
+                price: Number(item.price),
+              },
+              qty: Number(item.qty),
+              discount: Number(item.discount),
+            }))
+          : cart,
+      });
+      setCart([]);
+      setDiscount(0);
+      setCash(0);
+      setPay(false);
+      key.current = null;
+      pending.current = null;
+      setHasPending(false);
+      toast.success("تم البيع وتحديث المخزون");
+    } catch (e) {
+      if (e instanceof OperationError && e.rolledBack) {
+        pending.current = null;
+        setHasPending(false);
+        key.current = null;
+        toast.error(e.message);
+      } else toast.error((e as Error).message + " — أعد المحاولة بنفس الطلب.");
+    } finally {
+      setBusy(false);
+      lock.current = false;
+    }
+  }
+  return (
+    <div className="pos-grid">
+      <section>
+        <div className="scanner-box">
+          <Barcode />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              scan(code);
+            }}
+          >
+            <input
+              aria-label="باركود المنتج"
+              ref={input}
+              placeholder="امسح الباركود أو أدخله ثم Enter · F2"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              autoComplete="off"
+              dir="ltr"
+              disabled={hasPending}
+            />
+          </form>
+          <Button
+            variant="outline"
+            onClick={() => setCamera(true)}
+            aria-label="مسح بالكاميرا"
+          >
+            <Camera size={19} />
+          </Button>
+        </div>
+        <input
+          className="product-search"
+          placeholder="ابحث عن منتج بالاسم أو SKU…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="product-grid">
+          {products
+            .filter(
+              (p) =>
+                p.active &&
+                (p.name + p.sku).toLowerCase().includes(search.toLowerCase()),
+            )
+            .map((p, i) => (
+              <button
+                disabled={!stock(p.id) || hasPending}
+                className="product-tile"
+                key={p.id}
+                onClick={() => {
+                  if (
+                    (cart.find((l) => l.variant.id === p.id)?.qty ?? 0) <
+                    stock(p.id)
+                  )
+                    add(p);
+                  else toast.error("الكمية المتوفرة غير كافية");
+                }}
+              >
+                <div className={"product-art color" + (i % 4)}>
+                  <ShoppingBag size={36} />
+                </div>
+                <strong>{p.name}</strong>
+                <span>{p.category || p.sku}</span>
+                <div>
+                  <b>{money(p.price)}</b>
+                  <small>{stock(p.id)} متوفر</small>
+                </div>
+              </button>
+            ))}
+        </div>
+        {!products.length && (
+          <div className="empty">أضف المنتجات واستلم المخزون للبدء بالبيع</div>
+        )}
+      </section>
+      <section className="panel cart-panel">
+        <div className="panel-heading">
+          <h2>الفاتورة الحالية</h2>
+          <span className="badge">
+            {cart.reduce((a, l) => a + l.qty, 0)} قطع
+          </span>
+        </div>
+        <div className="cart-lines">
+          {!cart.length ? (
+            <div className="empty">
+              <ShoppingBag size={40} />
+              <h3>السلة جاهزة لأول منتج</h3>
+              <p>امسح الباركود أو اختر منتجًا</p>
+            </div>
+          ) : (
+            cart.map((l) => (
+              <div className="cart-line" key={l.variant.id}>
+                <div>
+                  <strong>{l.variant.name}</strong>
+                  <small>{money(l.variant.price)}</small>
+                  <label>
+                    خصم الصنف ₪
+                    <input
+                      aria-label={"خصم " + l.variant.name}
+                      type="number"
+                      min="0"
+                      max={(l.variant.price * l.qty) / 100}
+                      step="0.01"
+                      disabled={hasPending}
+                      value={l.discount / 100}
+                      onChange={(e) =>
+                        setCart(
+                          cart.map((x) =>
+                            x === l
+                              ? {
+                                  ...x,
+                                  discount: Math.min(
+                                    x.qty * x.variant.price,
+                                    Math.max(
+                                      0,
+                                      Math.round(Number(e.target.value) * 100),
+                                    ),
+                                  ),
+                                }
+                              : x,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="quantity">
+                  <button
+                    aria-label="إنقاص"
+                    disabled={hasPending}
+                    onClick={() =>
+                      setCart(
+                        cart.flatMap((x) =>
+                          x === l
+                            ? x.qty > 1
+                              ? [{ ...x, qty: x.qty - 1, discount: 0 }]
+                              : []
+                            : [x],
+                        ),
+                      )
+                    }
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <b>{l.qty}</b>
+                  <button
+                    aria-label="زيادة"
+                    disabled={hasPending}
+                    onClick={() => {
+                      if (l.qty < stock(l.variant.id)) add(l.variant);
+                      else toast.error("المخزون غير كاف");
+                    }}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+                <b>{money(l.qty * l.variant.price - l.discount)}</b>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="cart-summary">
+          <div>
+            <span>المجموع الفرعي</span>
+            <b>{money(totals.subtotal)}</b>
+          </div>
+          <div>
+            <label htmlFor="order-discount">خصم الفاتورة ₪</label>
+            <input
+              id="order-discount"
+              type="number"
+              step="0.01"
+              min="0"
+              max={totals.subtotal / 100}
+              value={discount / 100}
+              disabled={hasPending}
+              onChange={(e) =>
+                setDiscount(
+                  Math.max(0, Math.round(Number(e.target.value) * 100)),
+                )
+              }
+            />
+          </div>
+          <div>
+            <span>الضريبة ({taxBps / 100}%)</span>
+            <b>{money(totals.tax)}</b>
+          </div>
+          <div className="grand-total">
+            <span>الإجمالي</span>
+            <b>{money(totals.total)}</b>
+          </div>
+          <Button
+            disabled={!cart.length || !online || !enabled || !shift}
+            onClick={() => setPay(true)}
+          >
+            إتمام الدفع <span>F8</span>
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={busy || hasPending}
+            onClick={() => {
+              setCart([]);
+              setDiscount(0);
+            }}
+          >
+            <Trash2 size={15} />
+            تفريغ السلة
+          </Button>
+          {!shift && (
+            <p className="warning">افتح وردية من صفحة الورديات أولاً</p>
+          )}
+        </div>
+      </section>
+      <Modal
+        title="تأكيد الدفع النقدي"
+        open={pay}
+        onClose={() => {
+          if (!busy) setPay(false);
+        }}
+      >
+        <p>
+          المبلغ المستحق <strong>{money(totals.total)}</strong>
+        </p>
+        <label>
+          المبلغ المستلم (₪)
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            autoFocus
+            value={cash / 100}
+            disabled={hasPending}
+            onChange={(e) =>
+              setCash(Math.max(0, Math.round(Number(e.target.value) * 100)))
+            }
+          />
+        </label>
+        <div className="payment-change">
+          الباقي <b>{money(Math.max(0, cash - totals.total))}</b>
+        </div>
+        <p className="muted">
+          الدفع بالبطاقة والدفع المجزأ يتطلبان ربط مزود دفع معتمد.
+        </p>
+        <Button
+          disabled={busy || !online || cash < totals.total}
+          onClick={finalize}
+        >
+          {busy
+            ? "جارٍ تأكيد البيع…"
+            : hasPending
+              ? "إعادة تأكيد الطلب نفسه"
+              : "تأكيد البيع"}
+        </Button>
+      </Modal>
+      <Modal
+        title="تم إصدار الإيصال"
+        open={Boolean(receipt)}
+        onClose={() => {
+          setReceipt(null);
+          input.current?.focus();
+        }}
+      >
+        <div className="receipt" id="receipt">
+          <h2>najd POS</h2>
+          <p>إيصال بيع · ₪ ILS</p>
+          <p dir="ltr">{receipt?.id}</p>
+          {receipt?.lines.map((l) => (
+            <div key={l.variant.id}>
+              <span>
+                {l.variant.name} × {l.qty}
+              </span>
+              <b>{money(l.variant.price * l.qty - l.discount)}</b>
+            </div>
+          ))}
+          <hr />
+          <div>
+            الضريبة <b>{money(receipt?.tax ?? 0)}</b>
+          </div>
+          <div>
+            الإجمالي <b>{money(receipt?.total ?? 0)}</b>
+          </div>
+          <div>
+            المدفوع <b>{money(receipt?.cash ?? 0)}</b>
+          </div>
+          <div>
+            الباقي <b>{money((receipt?.cash ?? 0) - (receipt?.total ?? 0))}</b>
+          </div>
+          <p>شكرًا لزيارتكم</p>
+        </div>
+        <Button onClick={() => window.print()}>
+          <Printer size={17} />
+          طباعة الإيصال
+        </Button>
+      </Modal>
+      <Modal
+        title="مسح الباركود بالكاميرا"
+        open={camera}
+        onClose={() => setCamera(false)}
+      >
+        {camera && <CameraScanner onScan={scan} />}
+      </Modal>
+    </div>
+  );
+}

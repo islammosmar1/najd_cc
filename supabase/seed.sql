@@ -1,0 +1,5 @@
+-- The real Auth demo accounts cannot be safely seeded with hard-coded SQL passwords.
+-- After applying migrations to a dedicated test project, run scripts/seed-demo.mjs.
+-- It creates four Auth users, two branches, six products, stock, an open shift,
+-- a real atomic sale and one expense. It refuses to create a duplicate demo.
+-- The migration itself creates no businesses or users.
