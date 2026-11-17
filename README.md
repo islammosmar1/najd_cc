@@ -4,7 +4,7 @@ Company name: **najd**. The application was originally developed as SmartBranch 
 
 Arabic-first retail POS built with Next.js 16, TypeScript, Tailwind 4, shadcn-style Radix components, Supabase Auth/Postgres/Realtime, React Hook Form/Zod, TanStack Table, Recharts, JsBarcode and ZXing. The initially empty repository contained no code to preserve.
 
-**This is an implemented core with explicit remaining work, not a production-readiness certification.** It does not fabricate production data or silently sell offline. The existing NAJD COSMETICS database has not been changed. The requested independent Supabase project has not been provisioned or charged.
+**This is an implemented core with explicit remaining work, not a production-readiness certification.** It does not fabricate production data or silently sell offline. The existing NAJD COSMETICS database has not been changed. The requested independent Supabase project has not been provisioned or charged. Source: [islammosmar1/najd_cc](https://github.com/islammosmar1/najd_cc). The connected Vercel project is `najd-pos`; its live deployment still requires the independent Supabase configuration for real transactions.
 
 ## Run locally
 
@@ -93,7 +93,7 @@ Playwright setup/mobile tests run without a database. The live cashier test uses
 4. Set the deployed HTTPS origin in Supabase Auth. Redeploy after changing public environment variables.
 5. Test sign-in, permissions, checkout/retry, return, transfer receipt and realtime in two browsers before real use.
 
-No site has been deployed. The Sites Worker runtime differs from the explicitly requested Next.js/Vercel server target; this deliverable preserves that stack. No payment provider has been connected. Card success is never simulated.
+The deployment target is the connected Vercel project `najd-pos`. The Sites Worker runtime differs from the explicitly requested Next.js/Vercel server target; this deliverable preserves that stack. No payment provider has been connected. Card success is never simulated.
 
 ## Backup and recovery
 
