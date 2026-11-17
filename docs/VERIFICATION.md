@@ -1,5 +1,11 @@
 # Verification — 2026-11-17
 
+## Publication update
+
+The company branding is now **najd**. Source was published to `islammosmar1/najd_cc` after the user explicitly approved its public visibility. The verified Vercel target is `islammosmar1s-projects/najd-pos` (Next.js, Node 24). Production at https://najd-pos.vercel.app returned HTTP 200 with title `najd POS | إدارة فروعك بذكاء`. GitHub `main` is connected for automatic deployments. Supabase credentials remain unconfigured; no independent hosted database was created or changed. Vitest was updated to 5.1.0 after the remote build disclosed development-dependency vulnerabilities; the publication check results are separate from the original core test record below.
+
+## Original core implementation checks
+
 The implemented story is: authenticate → choose an authorized branch → open a shift → scan exact variants into a cart → POST validated checkout → one PostgreSQL transaction → persist sale/payment/historical cost and deduct inventory → render the database receipt and refresh branch data.
 
 | Check | Result | Evidence |

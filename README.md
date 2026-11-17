@@ -2,6 +2,8 @@
 
 Company name: **najd**. The application was originally developed as SmartBranch POS.
 
+Live website: **[najd-pos.vercel.app](https://najd-pos.vercel.app)**. Supabase setup is still required to enable sign-in and live business data.
+
 Arabic-first retail POS built with Next.js 16, TypeScript, Tailwind 4, shadcn-style Radix components, Supabase Auth/Postgres/Realtime, React Hook Form/Zod, TanStack Table, Recharts, JsBarcode and ZXing. The initially empty repository contained no code to preserve.
 
 **This is an implemented core with explicit remaining work, not a production-readiness certification.** It does not fabricate production data or silently sell offline. The existing NAJD COSMETICS database has not been changed. The requested independent Supabase project has not been provisioned or charged. Source: [islammosmar1/najd_cc](https://github.com/islammosmar1/najd_cc). The connected Vercel project is `najd-pos`; its live deployment still requires the independent Supabase configuration for real transactions.
