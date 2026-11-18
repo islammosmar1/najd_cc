@@ -5,6 +5,14 @@ export function normalizeBarcode(value: string) {
     .replace(/[٠-٩۰-۹]/g, digit => String(digit.charCodeAt(0) - (digit <= "٩" ? 0x660 : 0x6f0)))
     .trim();
 }
+export function barcodeIdentity(value: string) {
+  const code = normalizeBarcode(value);
+  if (!/^\d{12,13}$/.test(code)) return code;
+  const body = code.slice(0, -1);
+  const sum = [...body].reverse().reduce((n, digit, i) => n + Number(digit) * (i % 2 === 0 ? 3 : 1), 0);
+  if ((10 - sum % 10) % 10 !== Number(code.at(-1))) return code;
+  return code.length === 12 ? "0" + code : code;
+}
 export class OperationError extends Error {
   readonly rolledBack: boolean;
   constructor(message: string, rolledBack: boolean) {

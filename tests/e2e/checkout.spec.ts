@@ -1,8 +1,21 @@
 import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { prepareZXingModule as prepareWriter, writeBarcode } from "zxing-wasm/writer";
 import { emptyData } from "../../src/lib/types";
 
 // Isolated UI contract check. Live PostgreSQL transactions are covered by test:live.
-for (const withBarcode of [true, false]) test(`shared stock: product photo and ${withBarcode ? "barcode scan" : "sale by name without barcode"}`, async ({ page }) => {
+const cases = [
+ {format:"CODE128",code:"0001234567890",angle:0,invert:false},
+ {format:"EAN13",code:"5901234123457",angle:0,invert:false},
+ {format:"EAN8",code:"96385074",angle:90,invert:false},
+ {format:"UPC",code:"036000291452",angle:0,invert:true},
+ {format:"CODE39",code:"BAG-123",angle:180,invert:false},
+ {format:"ITF",code:"12345670",angle:0,invert:false},
+ {format:"QRCode",code:"NAJD-QR-001",angle:0,invert:false},
+ {format:"DataMatrix",code:"NAJD-DM-001",angle:0,invert:false},
+ {format:"",code:"",angle:0,invert:false},
+];
+for (const sample of cases) test(`shared stock: product photo and ${sample.format ? "barcode scan " + sample.format : "sale by name without barcode"}`, async ({ page }) => {
   const business = "10000000-0000-4000-8000-000000000001";
   const branch = "10000000-0000-4000-8000-000000000002";
   const other = "10000000-0000-4000-8000-000000000003";
@@ -10,7 +23,8 @@ for (const withBarcode of [true, false]) test(`shared stock: product photo and $
   const product = "10000000-0000-4000-8000-000000000005";
   const variant = "10000000-0000-4000-8000-000000000006";
   const sale = "10000000-0000-4000-8000-000000000007";
-  const barcode = "0001234567890";
+  const withBarcode = Boolean(sample.format);
+  const barcode = sample.code;
   const data = structuredClone(emptyData);
   Object.assign(data, {
     user_id: user, email_verified: true, inventory_branch_id: branch,
@@ -38,8 +52,8 @@ for (const withBarcode of [true, false]) test(`shared stock: product photo and $
   });
   await page.addInitScript(() => {
     Object.defineProperty(navigator.mediaDevices,"getUserMedia",{value: async () => {
-      const canvas = document.createElement("canvas"); canvas.width=1000; canvas.height=300;
-      const context=canvas.getContext("2d")!;context.fillStyle="white";context.fillRect(0,0,1000,300);
+      const canvas = document.createElement("canvas"); canvas.width=1000; canvas.height=600;
+      const context=canvas.getContext("2d")!;context.fillStyle="white";context.fillRect(0,0,1000,600);
       (window as unknown as {cameraTestCanvas:HTMLCanvasElement}).cameraTestCanvas=canvas;
       return canvas.captureStream(15);
     }});
@@ -71,36 +85,54 @@ for (const withBarcode of [true, false]) test(`shared stock: product photo and $
   await page.getByRole("button", { name: /^البيع/ }).click();
   if (withBarcode) {
     await page.addScriptTag({path:"node_modules/jsbarcode/dist/JsBarcode.all.min.js"});
-    const barcodeImage = async (text: string) => Buffer.from(await page.evaluate(text => {
-      const canvas = document.createElement("canvas");
-      const generate = (window as unknown as {JsBarcode:(canvas:HTMLCanvasElement,text:string,options:object)=>void}).JsBarcode;
-      generate(canvas,text,{format:"CODE128",width:3,height:100,margin:24,displayValue:true});
-      return canvas.toDataURL("image/png").split(",")[1];
-    },text),"base64");
+    const barcodeImage = async (text: string, format = "CODE128") => {
+      if (format === "QRCode" || format === "DataMatrix") {
+        await prepareWriter({overrides:{wasmBinary:new Uint8Array(readFileSync("node_modules/zxing-wasm/dist/writer/zxing_writer.wasm")).buffer},fireImmediately:true});
+        const result = await writeBarcode(text,{format,scale:8,addQuietZones:true});
+        if (!result.image) throw Error(result.error);
+        return Buffer.from(await result.image.arrayBuffer());
+      }
+      return Buffer.from(await page.evaluate(({text,format}) => {
+        const canvas=document.createElement("canvas");
+        (window as unknown as {JsBarcode:(canvas:HTMLCanvasElement,text:string,options:object)=>void}).JsBarcode(canvas,text,{format,width:3,height:100,margin:24,displayValue:true});
+        return canvas.toDataURL("image/png").split(",")[1];
+      },{text,format}),"base64");
+    };
     const camera = page.getByRole("region",{name:"قراءة الباركود التلقائية"});
     await expect(camera).toBeVisible();
+    await expect.poll(() => page.workers().length).toBeGreaterThan(0);
+    await page.workers().at(-1)!.evaluate(() => {
+      const scope=self as unknown as {postMessage:(value:Record<string,unknown>)=>void;testDecodeTimes:number[]};
+      const send=scope.postMessage.bind(scope);scope.testDecodeTimes=[];
+      scope.postMessage=value=>{if(typeof value.elapsed === "number")scope.testDecodeTimes.push(value.elapsed);send(value);};
+    });
     await camera.getByLabel("قراءة باركود من صورة").setInputFiles({name:"unknown.png",mimeType:"image/png",buffer:await barcodeImage("UNKNOWN-128")});
     await expect(camera.getByText("UNKNOWN-128",{exact:true})).toBeVisible();
-    await expect(camera.getByText(/تمت قراءة الرمز، لكن لم/)).toBeVisible();
+    await expect(camera.getByText(/الرقم مقروء، لكنه غير مسجّل/)).toBeVisible();
     const present = async (text: string) => {
-      await page.evaluate(text => {
+      const png = text ? (await barcodeImage(text,sample.format)).toString("base64") : "";
+      await page.evaluate(async ({png,angle,invert}) => {
         const canvas=(window as unknown as {cameraTestCanvas:HTMLCanvasElement}).cameraTestCanvas;
+        const image=png ? new Image() : null;
+        if (image) {image.src="data:image/png;base64,"+png;await image.decode();}
         const context=canvas.getContext("2d")!;context.fillStyle="white";context.fillRect(0,0,canvas.width,canvas.height);
-        if (text) {
-          const symbol=document.createElement("canvas");
-          (window as unknown as {JsBarcode:(canvas:HTMLCanvasElement,text:string,options:object)=>void}).JsBarcode(symbol,text,{format:"CODE128",width:3,height:100,margin:24});
-          context.drawImage(symbol,Math.floor((1000-symbol.width)/2),60);
+        if (image) {
+          context.save();context.translate(canvas.width/2,canvas.height/2);context.rotate(angle*Math.PI/180);if(invert)context.filter="invert(1)";context.drawImage(image,-image.width/2,-image.height/2);context.restore();
         }
-      },text);
+      },{png,angle:sample.angle,invert:sample.invert});
     };
+    const readStarted = Date.now();
     await present(barcode);
     const quantity=page.getByRole("spinbutton",{name:"كمية منتج اختبار",exact:true});
     await expect(quantity).toHaveValue("1");
+    console.log(sample.format + " first video recognition: " + (Date.now()-readStarted) + "ms");
     await page.waitForTimeout(2200);
     await expect(quantity).toHaveValue("1");
     await present("");await page.waitForTimeout(1600);await present(barcode);
     await expect(quantity).toHaveValue("2");
     await expect(camera).toBeVisible();
+    const times=await page.workers().at(-1)!.evaluate(() => (self as unknown as {testDecodeTimes:number[]}).testDecodeTimes);
+    times.sort((a,b)=>a-b);console.log(sample.format+" median worker decode: "+times[Math.floor(times.length/2)].toFixed(1)+"ms");
   } else {
     const tile = page.getByRole("button", { name:"إضافة منتج اختبار إلى الفاتورة",exact:true });
     await expect(tile.getByRole("img")).toBeVisible();

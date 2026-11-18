@@ -10,6 +10,7 @@ import {
   OperationError,
   normalizeBarcode,
   CameraScanGate,
+  barcodeIdentity,
 } from "../src/lib/domain.ts";
 const variant = {
   id: "10000000-0000-4000-8000-000000000001",
@@ -30,6 +31,12 @@ test("repeated scans increment the cart without deducting inventory", () => {
   const cart = addScan(addScan([], variant, available), variant, available);
   assert.equal(cart[0].qty, 2);
   assert.equal(available, 20);
+});
+test("UPC-A and its valid EAN-13 representation match without stripping ordinary zeros", () => {
+  assert.equal(barcodeIdentity("036000291452"), barcodeIdentity("0036000291452"));
+  assert.notEqual(barcodeIdentity("00123"), barcodeIdentity("123"));
+  assert.notEqual(barcodeIdentity("036000291453"), barcodeIdentity("0036000291453"));
+  assert.equal(barcodeIdentity("5901234123457"), "5901234123457");
 });
 test("automatic camera counts one visible barcode and re-arms after removal", () => {
   const gate = new CameraScanGate();

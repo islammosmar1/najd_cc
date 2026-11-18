@@ -3,6 +3,7 @@ const config: NextConfig = {
   poweredByHeader: false,
   async headers() {
     return [
+      { source: "/scanner/:path*", headers: [{key: "Cache-Control", value: "public, max-age=31536000, immutable"}] },
       {
         source: "/(.*)",
         headers: [

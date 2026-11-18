@@ -17,6 +17,7 @@ import {
   ScanGate,
   OperationError,
   normalizeBarcode,
+  barcodeIdentity,
   type CartLine,
   type Variant,
 } from "@/lib/domain";
@@ -117,7 +118,7 @@ export function POS({
     const cleaned = normalizeBarcode(text);
     setCode(cleaned);
     if (!gate.current.accept(cleaned, Date.now())) return false;
-    const matches = products.filter((p) => normalizeBarcode(p.barcode) === cleaned && p.active);
+    const matches = products.filter((p) => barcodeIdentity(p.barcode) === barcodeIdentity(cleaned) && p.active);
     if (matches.length > 1) {
       toast.error("هذا الرقم مرتبط بأكثر من منتج. راجع باركود المنتجات أولًا.");
       return false;
@@ -125,11 +126,11 @@ export function POS({
     const v = matches[0];
     if (!v) {
       toast.error("الباركود غير معروف. ابحث عن المنتج أو أضفه أولاً.");
-      return false;
+      return "الرقم مقروء، لكنه غير مسجّل على أي منتج. أضف الرقم المقروء إلى بيانات المنتج أولًا.";
     }
     if ((cart.find((l) => l.variant.id === v.id)?.qty ?? 0) >= stock(v.id)) {
       toast.error("الكمية المتوفرة غير كافية");
-      return false;
+      return "تم التعرف على المنتج، لكن كميته المتوفرة غير كافية.";
     }
     add(v);
     setCode("");

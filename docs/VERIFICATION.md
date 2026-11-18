@@ -1,3 +1,13 @@
+# Worker-based multi-format scanner — 2026-11-18
+
+Replaced zxing-js with zxing-wasm 3.1.7 (ZXing-C++). The versioned reader WASM and upstream license are served locally under public/scanner; no CDN or remote image upload is used. An isolated Web Worker serializes decoding, transfers frame buffers, and alternates central crops and full frames. Harder/rotation/inversion passes run adaptively; an explicit inversion pass handles negative linear UPC symbols. Camera focus is set to continuous only when reported as supported. Preview now fills its frame. Browser permission and physical lens/print quality still apply.
+
+The catalog matcher handles valid UPC-A/EAN-13 equivalents with checksum validation and preserves ordinary leading zeros; ambiguity is rejected. A decoded unregistered number and a recognized out-of-stock product produce different feedback.
+
+Validation: build, TypeScript, lint and 13 domain checks passed. Twelve browser checks passed (one real-account test remains skipped). Eight actual pixel/video cases cover CODE128, EAN13, 90-degree EAN8, inverted UPC, 180-degree CODE39, ITF, QRCode and DataMatrix, including steady-view deduplication, removal/re-presentation and exactly one fixture checkout. Warm synthetic first-recognition wall times were 47–448 ms; median worker decode times were 6.4–11.8 ms. These are controlled virtual-stream measurements, not claims about the user's physical camera or arbitrary damaged labels. Fixtures intercept auth/data/write requests and create no real sale. The user's failing barcode image has been requested for direct reproduction; it has not been supplied.
+
+## Earlier verification records
+
 # Automatic continuous camera scanning — 2026-11-18
 
 The authenticated sale screen now starts its inline camera automatically, keeps it open after scans, and stops it on leaving sales, logging out, or opening a committed receipt. Pending checkouts suspend scanning. A visible stop/start control remains available. Browser camera permission is still required.
