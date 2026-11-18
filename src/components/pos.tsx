@@ -58,13 +58,13 @@ export function POS({
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState("");
   const [code, setCode] = useState("");
-  const [discount, setDiscount] = useState(0);
-  const [cash, setCash] = useState(0);
+  const discount = 0;
+
   const [busy, setBusy] = useState(false);
   const [hasPending, setHasPending] = useState(false);
   const [camera, setCamera] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
-  const [pay, setPay] = useState(false);
+
   const input = useRef<HTMLInputElement>(null);
   const paymentButton = useRef<HTMLButtonElement>(null);
   const gate = useRef(new ScanGate());
@@ -161,7 +161,7 @@ export function POS({
       toast.error("يلزم تسجيل الدخول واتصال لإتمام البيع");
       return;
     }
-    if (!cart.length || cash < totals.total || discount > totals.subtotal) {
+    if (!cart.length) {
       toast.error("راجع السلة والمبلغ المدفوع");
       return;
     }
@@ -178,7 +178,7 @@ export function POS({
         discount: l.discount,
       })),
       discount,
-      cash,
+      cash: totals.total,
     };
     setHasPending(true);
     onPendingChange?.(true);
@@ -188,7 +188,7 @@ export function POS({
         id: String(r.id),
         total: Number(r.total),
         tax: Number(r.tax ?? 0),
-        cash,
+        cash: Number(r.total),
         lines: Array.isArray(r.items)
           ? r.items.map((item) => ({
               variant: {
@@ -202,9 +202,6 @@ export function POS({
           : cart,
       });
       setCart([]);
-      setDiscount(0);
-      setCash(0);
-      setPay(false);
       key.current = null;
       pending.current = null;
       setHasPending(false);
@@ -255,7 +252,8 @@ export function POS({
         </div>
         <input
           className="product-search"
-          placeholder="ابحث عن منتج بالاسم أو SKU…"
+          aria-label="ابحث عن منتج للبيع"
+          placeholder="ابحث باسم المنتج أو الباركود…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -264,9 +262,9 @@ export function POS({
             .filter(
               (p) =>
                 p.active &&
-                (p.name + p.sku).toLowerCase().includes(search.toLowerCase()),
+                (p.name + p.barcode).toLowerCase().includes(search.toLowerCase()),
             )
-            .map((p, i) => (
+            .map((p) => (
               <button
                 disabled={!stock(p.id) || hasPending}
                 className="product-tile"
@@ -280,11 +278,8 @@ export function POS({
                   else toast.error("الكمية المتوفرة غير كافية");
                 }}
               >
-                <div className={"product-art color" + (i % 4)}>
-                  <ShoppingBag size={36} />
-                </div>
                 <strong>{p.name}</strong>
-                <span>{p.category || p.sku}</span>
+                <span dir="ltr">{p.barcode}</span>
                 <div>
                   <b>{money(p.price)}</b>
                   <small>{stock(p.id)} متوفر</small>
@@ -293,7 +288,7 @@ export function POS({
             ))}
         </div>
         {!products.length && (
-          <div className="empty">أضف المنتجات واستلم المخزون للبدء بالبيع</div>
+          <div className="empty">أضف أول منتج من صفحة المنتجات والكميات، ثم امسح باركوده هنا.</div>
         )}
       </section>
       <section className="panel cart-panel">
@@ -316,36 +311,6 @@ export function POS({
                 <div>
                   <strong>{l.variant.name}</strong>
                   <small>{money(l.variant.price)}</small>
-                  <label>
-                    خصم الصنف ₪
-                    <input
-                      aria-label={"خصم " + l.variant.name}
-                      type="number"
-                      min="0"
-                      max={(l.variant.price * l.qty) / 100}
-                      step="0.01"
-                      disabled={hasPending}
-                      value={l.discount / 100}
-                      onChange={(e) =>
-                        setCart(
-                          cart.map((x) =>
-                            x === l
-                              ? {
-                                  ...x,
-                                  discount: Math.min(
-                                    x.qty * x.variant.price,
-                                    Math.max(
-                                      0,
-                                      Math.round(Number(e.target.value) * 100),
-                                    ),
-                                  ),
-                                }
-                              : x,
-                          ),
-                        )
-                      }
-                    />
-                  </label>
                 </div>
                 <div className="quantity">
                   <button
@@ -409,47 +374,23 @@ export function POS({
             <span>المجموع الفرعي</span>
             <b>{money(totals.subtotal)}</b>
           </div>
-          <div>
-            <label htmlFor="order-discount">خصم الفاتورة ₪</label>
-            <input
-              id="order-discount"
-              type="number"
-              step="0.01"
-              min="0"
-              max={totals.subtotal / 100}
-              value={discount / 100}
-              disabled={hasPending}
-              onChange={(e) =>
-                setDiscount(
-                  Math.max(0, Math.round(Number(e.target.value) * 100)),
-                )
-              }
-            />
-          </div>
-          <div>
-            <span>الضريبة ({taxBps / 100}%)</span>
-            <b>{money(totals.tax)}</b>
-          </div>
+          {taxBps > 0 && <div><span>الضريبة</span><b>{money(totals.tax)}</b></div>}
           <div className="grand-total">
             <span>الإجمالي</span>
             <b>{money(totals.total)}</b>
           </div>
           <Button
             ref={paymentButton}
-            disabled={!cart.length || !online || !enabled}
-            onClick={() => {
-              if (!hasPending) setCash(totals.total);
-              setPay(true);
-            }}
+            disabled={busy || !cart.length || !online || !enabled}
+            onClick={() => void finalize()}
           >
-            إتمام الدفع <span>F8</span>
+            {busy ? "جارٍ حفظ البيع…" : hasPending ? "إعادة تأكيد البيع نفسه" : "تأكيد البيع وخصم الكمية"} <span>F8</span>
           </Button>
           <Button
             variant="ghost"
             disabled={busy || hasPending}
             onClick={() => {
               setCart([]);
-              setDiscount(0);
             }}
           >
             <Trash2 size={15} />
@@ -460,47 +401,6 @@ export function POS({
           </p>
         </div>
       </section>
-      <Modal
-        title="تأكيد الدفع النقدي"
-        open={pay}
-        onClose={() => {
-          if (!busy) setPay(false);
-        }}
-      >
-        <p>
-          المبلغ المستحق <strong>{money(totals.total)}</strong>
-        </p>
-        <label>
-          المبلغ المستلم (₪)
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            autoFocus
-            value={cash / 100}
-            disabled={hasPending}
-            onChange={(e) =>
-              setCash(Math.max(0, Math.round(Number(e.target.value) * 100)))
-            }
-          />
-        </label>
-        <div className="payment-change">
-          الباقي <b>{money(Math.max(0, cash - totals.total))}</b>
-        </div>
-        <p className="muted">
-          الدفع بالبطاقة والدفع المجزأ يتطلبان ربط مزود دفع معتمد.
-        </p>
-        <Button
-          disabled={busy || !online || cash < totals.total}
-          onClick={finalize}
-        >
-          {busy
-            ? "جارٍ تأكيد البيع…"
-            : hasPending
-              ? "إعادة تأكيد الطلب نفسه"
-              : "تأكيد البيع"}
-        </Button>
-      </Modal>
       <Modal
         title="تم إصدار الإيصال"
         open={Boolean(receipt)}
@@ -536,7 +436,8 @@ export function POS({
           </div>
           <p>شكرًا لزيارتكم</p>
         </div>
-        <Button onClick={() => window.print()}>
+        <Button onClick={() => { setReceipt(null); input.current?.focus(); }}>بيع جديد</Button>
+        <Button variant="outline" onClick={() => window.print()}>
           <Printer size={17} />
           طباعة الإيصال
         </Button>

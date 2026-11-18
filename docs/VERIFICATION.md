@@ -1,3 +1,15 @@
+# Simplified desk verification — 2026-11-18
+
+The three-tab interface removes expanded administration, account/expense panels and the separate cash payment dialog. The data endpoint now loads only the catalog, authorized branches, memberships, inventory and sales required by this desk. The retained database transactions and RLS remain unchanged.
+
+- Production build, TypeScript, ESLint and 9 domain checks pass.
+- Live Neon rollback check passes: create a product with 20/15 units, sell two -> 18/15, retry without another deduction, retain historical cost. All fixtures rolled back.
+- Four browser checks pass: unauthenticated write/origin protection, email-code form, mobile three-tab layout, and isolated UI contract for product scanner Enter, barcode leading zeros, two scans, one sale request and refreshed quantities. The contract check uses local routed fixtures; it is not a claim of a real authenticated browser sale.
+- Auth production origin was verified after the user's domain change: a nonexistent-account password request returned INVALID_EMAIL_OR_PASSWORD rather than INVALID_ORIGIN. No email was sent by this check.
+- Physical scanner/printer and actual email delivery remain on-device checks. The historical authenticated cashier test remains skipped without an explicit test account.
+
+## Earlier records (historical)
+
 # Verification — 2026-11-17
 
 ## Current Neon / simplified workspace update — 2026-11-18

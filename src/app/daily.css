@@ -1598,3 +1598,45 @@
     font-size: 20px;
   }
 }
+
+/* Compact working desk: product entry and barcode sales. */
+.daily-header { height: 68px; }
+.daily-main { padding-top: 22px; padding-bottom: 28px; }
+.daily-brand strong span { color: #52647a; }
+.daily-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 22px; }
+.daily-tabs > button { min-height: 62px; padding: 12px 18px; }
+.daily-tabs small { display: none; }
+.daily-branches { margin-bottom: 16px; }
+.daily-section-title p, .daily-brand small, .daily-connection { color: #53657a; }
+.daily-sell .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 440px; overflow-y: auto; }
+.daily-sell .product-tile { min-height: 100px; padding: 16px; gap: 6px; }
+.daily-sell .product-tile > strong { font-size: 15px; }
+.daily-sell .product-tile > span { color: #5a6b80; }
+.daily-sell .cart-panel { min-height: 440px; }
+.daily-sell .scanner-box input { font-size: 16px; min-height: 46px; }
+.daily-sell .product-search { font-size: 14px; }
+.daily-sell .cart-line > div:first-child > small { color: #53657a; }
+.auth-intro h3 { color: #203c61; }
+.auth-intro p, .auth-footnote { color: #53657a; }
+.auth-message { color: #294d7b; }
+@media(max-width: 650px) {
+ .daily-header { padding-inline: 15px; }
+ .daily-brand strong { font-size: 23px; }
+ .daily-brand > span { width: 36px; height: 36px; }
+ .daily-brand strong span, .daily-connection, .daily-tabs > button > svg:last-child:not(:first-child) { display:none; }
+ .daily-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+ .daily-tabs > button { flex-direction: column; justify-content: center; gap: 5px; padding: 10px 4px; }
+ .daily-tabs strong { font-size: 11px; }
+ .daily-sell .product-grid { max-height: 210px; }
+ .daily-sell .product-tile { min-height: 88px; padding: 12px; }
+ .daily-sell .scanner-box input { font-size: 13px; }
+ .daily-sell .cart-panel { min-height: 320px; }
+}
+
+.daily-tabs strong { font-size: 15px; }
+.daily-stock-table th { font-size: 13px; color: #53657a; }
+.daily-stock-table td, .daily-sales-table td { font-size: 14px; }
+.daily-product-title strong { font-size: 15px; color: #233e60; }
+.daily-product-title small, .daily-section-title p { font-size: 12px; color: #53657a; }
+.daily-row-actions .btn { min-height: 40px; font-size: 12px; }
+@media(max-width:650px) { .daily-tabs strong { font-size: 11px; } }

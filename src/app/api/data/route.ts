@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { emptyData } from "@/lib/types";
 import { configured, currentUser, asUser } from "@/lib/database";
 import { z } from "zod";
 const tables = [
@@ -12,15 +13,6 @@ const tables = [
   "branch_prices",
   "sales",
   "sale_items",
-  "payments",
-  "stock_transfers",
-  "transfer_items",
-  "expenses",
-  "cash_shifts",
-  "inventory_movements",
-  "suppliers",
-  "purchases",
-  "audit_logs",
 ] as const;
 export async function GET(request: NextRequest) {
   if (!configured())
@@ -57,26 +49,12 @@ export async function GET(request: NextRequest) {
           );
           entries[table] = rows;
         }
-        let financial = null;
-        if (b) {
-          const { rows } = await client.query(
-            `select private.allowed($1,$2,array['super_admin','owner','manager','accountant']::public.staff_role[]) as permitted`,
-            [b, br],
-          );
-          if (rows[0].permitted)
-            financial = (
-              await client.query(
-                "select public.financials($1,$2,$3,$4) as result",
-                [b, br, from, to],
-              )
-            ).rows[0].result;
-        }
-        return { ...entries, financial };
+        return { ...entries, financial: null };
       },
       true,
     );
     return NextResponse.json(
-      { ...data, user_id: user.id, email_verified: user.emailVerified },
+      { ...emptyData, ...data, user_id: user.id, email_verified: user.emailVerified },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch {

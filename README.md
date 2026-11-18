@@ -1,8 +1,10 @@
+> Current interface (2026-11-18): only Sale, Products/Quantities and Sales History. The expanded administration workspace, expense/report panels and payment dialog have been removed. Scan into a cart, edit quantities, then confirm a cash sale with one button. Neon persists real product/branch inventory and atomically commits sales; no local demo fallback.
+
 # najd — الحسابات والبيع بالباركود
 
 [Open najd](https://najd-pos.vercel.app) · [GitHub](https://github.com/islammosmar1/najd_cc)
 
-Arabic RTL retail accounting and POS for **فرع الستي سنتر** and **فرع شارع أبو بكر**. The default workspace has four screens: barcode sales, products/quantities, accounts, and sale history. The previous administration workspace remains available under settings.
+Arabic RTL retail accounting and POS for **فرع الستي سنتر** and **فرع شارع أبو بكر**. The workspace has three screens: barcode sales, products/quantities, and sales history.
 
 ## Backend
 
@@ -15,14 +17,12 @@ The browser never receives a database password, session signing secret, or privi
 ## Workflows
 
 - Add a product with its barcode, purchase cost, sale price and opening quantities for both branches in one atomic transaction.
-- Scan by USB/Bluetooth HID keyboard scanner with Enter suffix, camera, or manual input. Repeated scans increment the cart. F2 focuses barcode input and F8 opens payment.
+- Scan by USB/Bluetooth HID keyboard scanner with Enter suffix, camera, or manual input. Repeated scans increment the cart. F2 focuses barcode input and F8 confirms the cash sale.
 - Change an item's cart quantity directly or with +/−. Scanning itself does not deduct inventory.
-- Confirm cash payment: database prices/tax, sale, payment, historical cost and stock deduction commit together. A shift is opened automatically with zero opening balance if none exists; staff can manage and reconcile shifts in the advanced workspace.
+- Confirm cash payment: database prices/tax, sale, payment, historical cost and stock deduction commit together. An internal cash shift is opened automatically with zero opening balance if needed.
 - Open “المنتجات والكميات” to receive additional units or set a physical stock count. Exact corrections compare the displayed count under a row lock; a concurrent sale prevents stale counts from overwriting newer stock.
 - Every actual stock change has a timestamp, reason, branch and responsible user. Duplicate checkout/quantity requests are protected by idempotency keys.
-- Accounts show sales after refunds, historical COGS, operating expenses and estimated profit by branch/date. Full refunds are recognized in the period when they happen.
 - Authorized screens refresh immediately after writes, on visibility changes, and every 15 seconds while visible. This is polling, not a realtime websocket guarantee. PostgreSQL transactions remain authoritative.
-- Full returns, transfers, CSV import/export, barcode labels, staff membership and tax settings remain in the advanced workspace.
 
 ## First login
 

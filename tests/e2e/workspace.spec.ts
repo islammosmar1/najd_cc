@@ -4,14 +4,14 @@ test("simple Arabic desk shows the two named branches and protects checkout", as
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "بيع أسرع. مخزون مرتب. حسابات أوضح." }),
+    page.getByRole("heading", { name: "فاتورة بيع جديدة" }),
   ).toBeVisible();
   await expect(page.getByText("فرع الستي سنتر", { exact: true })).toBeVisible();
   await expect(
     page.getByText("فرع شارع أبو بكر", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "إتمام الدفع" }),
+    page.getByRole("button", { name: "تأكيد البيع وخصم الكمية" }),
   ).toBeDisabled();
   const input = page.getByRole("textbox", {
     name: "باركود المنتج",
@@ -56,7 +56,7 @@ test("login offers an email code without requesting a message automatically", as
   ).toBeVisible();
   await expect(page.getByLabel("البريد الإلكتروني")).toBeVisible();
 });
-test("mobile RTL desk fits and switches between inventory and accounts", async ({
+test("mobile RTL desk has only sale, products and sales history", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -78,13 +78,9 @@ test("mobile RTL desk fits and switches between inventory and accounts", async (
     path: ".local/najd-stock-mobile.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: /الحسابات المبيعات/ }).click();
-  await expect(
-    page.getByRole("heading", { name: /حسابات المتجر/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("صافي الربح التقديري", { exact: true }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: /سجل المبيعات/ }).click();
+  await expect(page.getByRole("heading", { name: "سجل المبيعات", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /الإعدادات والإدارة|الورديات|المصاريف|الحسابات المبيعات/ })).toHaveCount(0);
 });
 test("real authenticated cashier workflow (explicit test account only)", async ({
   page,
@@ -122,8 +118,7 @@ test("real authenticated cashier workflow (explicit test account only)", async (
     await page.waitForTimeout(150);
   }
   await expect(page.locator(".quantity input").first()).toHaveValue("2");
-  await page.getByRole("button", { name: "إتمام الدفع" }).click();
-  await page.getByRole("button", { name: "تأكيد البيع", exact: true }).click();
+  await page.getByRole("button", { name: "تأكيد البيع وخصم الكمية" }).click();
   await expect(
     page.getByRole("heading", { name: "تم إصدار الإيصال" }),
   ).toBeVisible();

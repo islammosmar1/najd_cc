@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   ScanLine,
   Package,
-  Wallet,
   ReceiptText,
   Store,
   ChevronLeft,
@@ -13,8 +12,6 @@ import {
   RefreshCw,
   LogOut,
   Settings2,
-  ArrowDownLeft,
-  ArrowUpLeft,
   CheckCircle2,
   TriangleAlert,
   Printer,
@@ -55,12 +52,11 @@ type Props = {
     action: string,
     p: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
-  onAdvanced: () => void;
 };
 type EditProduct = Variant & { cost?: number; description?: string };
 type DeskDialog = {
   type:
-    "login" | "product" | "stock" | "expense" | "receipt" | "return" | "setup";
+    "login" | "product" | "stock" | "receipt" | "return";
   product?: EditProduct;
   mode?: "add" | "set";
   expected?: number;
@@ -69,9 +65,9 @@ type DeskDialog = {
 const sections = [
   {
     id: "sell",
-    label: "بيع بالباركود",
+    label: "البيع",
     icon: ScanLine,
-    description: "فاتورة جديدة",
+    description: "مسح الباركود وتأكيد البيع",
   },
   {
     id: "stock",
@@ -80,16 +76,10 @@ const sections = [
     description: "إضافة وتعديل المخزون",
   },
   {
-    id: "accounts",
-    label: "الحسابات",
-    icon: Wallet,
-    description: "المبيعات والمصاريف والأرباح",
-  },
-  {
     id: "history",
     label: "سجل المبيعات",
     icon: ReceiptText,
-    description: "الفواتير والمرتجعات",
+    description: "مراجعة الفواتير",
   },
 ] as const;
 export function DailyDesk(props: Props) {
@@ -111,7 +101,6 @@ export function DailyDesk(props: Props) {
     onSigned,
     refresh,
     execute,
-    onAdvanced,
   } = props;
   const [tab, setTab] = useState<string>("sell");
   const [search, setSearch] = useState("");
@@ -132,8 +121,6 @@ export function DailyDesk(props: Props) {
   );
   const canStock = canManage || memberships.some((m) => m.role === "inventory");
   const canSell = canManage || memberships.some((m) => m.role === "cashier");
-  const canFinance =
-    canManage || memberships.some((m) => m.role === "accountant");
   const canAll = memberships.some(
     (m) =>
       !m.branch_id &&
@@ -143,7 +130,7 @@ export function DailyDesk(props: Props) {
     tab === "sell" && signed && memberships.length > 0 && !canSell
       ? canStock
         ? "stock"
-        : "accounts"
+        : "history"
       : tab;
   const enabled = configured && signed && Boolean(branch) && online && !error;
   const catalog = variants(data, business, branch);
@@ -173,17 +160,6 @@ export function DailyDesk(props: Props) {
         localDay(String(s.created_at)) <= to,
     )
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  const expenses = data.expenses.filter(
-    (s) =>
-      s.business_id === business &&
-      (allBranches || s.branch_id === branch) &&
-      localDay(String(s.created_at)) >= from &&
-      localDay(String(s.created_at)) <= to,
-  );
-  const movement = data.inventory_movements
-    .filter((m) => m.branch_id === branch)
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-    .slice(0, 8);
   async function save(action: string, p: Record<string, unknown>) {
     if (submitting.current) return;
     submitting.current = true;
@@ -221,36 +197,6 @@ export function DailyDesk(props: Props) {
     setTab(id);
     setSearch("");
   };
-  const metrics = [
-    {
-      label: "المبيعات الصافية",
-      value: data.financial?.sales_gross,
-      icon: ReceiptText,
-      theme: "blue",
-      note: "بعد المرتجعات، شاملة الضريبة",
-    },
-    {
-      label: "المصاريف",
-      value: data.financial?.expenses,
-      icon: ArrowUpLeft,
-      theme: "orange",
-      note: "مصاريف الفترة المحددة",
-    },
-    {
-      label: "تكلفة القطع المباعة",
-      value: data.financial?.cogs,
-      icon: Package,
-      theme: "purple",
-      note: "تكلفة الشراء وقت البيع",
-    },
-    {
-      label: "صافي الربح التقديري",
-      value: data.financial?.net,
-      icon: ArrowDownLeft,
-      theme: "green",
-      note: "دون الضريبة، وبعد التكلفة والمصاريف",
-    },
-  ];
   return (
     <div className="daily-app" dir="rtl">
       <Toaster richColors position="top-center" dir="rtl" />
@@ -263,7 +209,7 @@ export function DailyDesk(props: Props) {
             <strong>
               najd<span> للحسابات</span>
             </strong>
-            <small>كل قطعة محسوبة، وكل فرع واضح</small>
+
           </div>
         </Link>
         <div className="daily-header-tools">
@@ -286,10 +232,6 @@ export function DailyDesk(props: Props) {
           </button>
           {signed ? (
             <>
-              <Button variant="ghost" disabled={pending} onClick={onAdvanced}>
-                <Settings2 size={18} />
-                <span>الإعدادات والإدارة</span>
-              </Button>
               <button
                 className="icon-btn"
                 aria-label="تسجيل الخروج"
@@ -314,24 +256,6 @@ export function DailyDesk(props: Props) {
         </div>
       </header>
       <main className="daily-main">
-        <div className="daily-welcome">
-          <div>
-            <span className="daily-kicker">يومك أبسط مع najd</span>
-            <h1>بيع أسرع. مخزون مرتب. حسابات أوضح.</h1>
-            <p>اختر الفرع، امسح القطعة، وأكّد البيع. الباقي يحسبه النظام.</p>
-          </div>
-          <div className="daily-today">
-            <strong>
-              {new Date().toLocaleDateString("ar-PS", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                timeZone: "Asia/Hebron",
-              })}
-            </strong>
-            <span>العملة: الشيكل ₪</span>
-          </div>
-        </div>
         <section className="daily-branches" aria-label="اختر الفرع">
           <span className="branch-prompt">
             <Store size={19} />
@@ -360,35 +284,15 @@ export function DailyDesk(props: Props) {
                   </div>
                 ))}
           </div>
-          <small className="branch-separate">كمية مستقلة لكل فرع</small>
+
         </section>
-        {!configured && (
-          <div className="daily-notice">
-            <div className="notice-icon">
-              <LockKeyhole size={21} />
-            </div>
-            <div>
-              <strong>فروعك جاهزة في الواجهة. بقي تفعيل حفظ الحسابات.</strong>
-              <p>
-                لن تُسجَّل مبيعات أو تتغيّر كميات حتى نربط قاعدة البيانات ونسجّل
-                الدخول.
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => setDialog({ type: "setup" })}
-            >
-              ما الخطوة التالية؟
-              <ChevronLeft size={15} />
-            </Button>
-          </div>
-        )}
+        {!configured && <div className="error-banner">تعذر الاتصال بالخدمة. حاول مجددًا لاحقًا.</div>}
         {configured && !signed && (
           <div className="daily-notice">
             <LockKeyhole size={22} />
             <div>
               <strong>أهلًا بك في najd</strong>
-              <p>سجّل الدخول لتظهر منتجات الفرعين وحساباتهما الحقيقية.</p>
+              <p>سجّل الدخول لعرض المنتجات والبدء بالبيع.</p>
             </div>
             <Button onClick={() => setDialog({ type: "login" })}>
               تسجيل الدخول
@@ -432,8 +336,7 @@ export function DailyDesk(props: Props) {
                 !signed ||
                 s.id === "history" ||
                 (s.id === "sell" && canSell) ||
-                (s.id === "stock" && canStock) ||
-                (s.id === "accounts" && canFinance),
+                (s.id === "stock" && canStock),
             )
             .map((s) => (
               <button
@@ -641,159 +544,6 @@ export function DailyDesk(props: Props) {
                 </div>
               )}
             </section>
-            <section className="panel daily-movements">
-              <div className="daily-section-title">
-                <div>
-                  <h2>آخر تغييرات الكمية</h2>
-                  <p>نعرض كل بيع أو توريد أو تعديل مع سببه.</p>
-                </div>
-              </div>
-              {movement.length ? (
-                <div className="daily-movement-list">
-                  {movement.map((m) => (
-                    <div key={m.id}>
-                      <span
-                        className={
-                          Number(m.delta) > 0
-                            ? "movement-plus"
-                            : "movement-minus"
-                        }
-                      >
-                        {Number(m.delta) > 0 ? "+" : ""}
-                        {Number(m.delta)}
-                      </span>
-                      <div>
-                        <strong>
-                          {catalog.find((p) => p.id === m.variant_id)?.name ||
-                            "منتج"}
-                        </strong>
-                        <small>
-                          {(
-                            {
-                              sale: "بيع",
-                              return: "إرجاع",
-                              cancel_sale: "إلغاء بيع",
-                            } as Record<string, string>
-                          )[String(m.reason)] || String(m.reason)}
-                        </small>
-                      </div>
-                      <time>
-                        {new Date(String(m.created_at)).toLocaleString(
-                          "ar-PS",
-                          { timeZone: "Asia/Hebron" },
-                        )}
-                      </time>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="empty">
-                  ستظهر حركات المخزون هنا بعد أول عملية.
-                </div>
-              )}
-            </section>
-          </>
-        )}
-        {current === "accounts" && (
-          <>
-            <div className="daily-section-title">
-              <div>
-                <h2>
-                  حسابات{" "}
-                  {allBranches
-                    ? "الفرعين"
-                    : String(selectedBranch?.name || "المتجر")}
-                </h2>
-                <p>
-                  المبيعات والتكاليف والمصاريف والأرباح للفترة التي تختارها.
-                </p>
-              </div>
-              <Button
-                disabled={!enabled || !canFinance}
-                onClick={() => setDialog({ type: "expense" })}
-              >
-                <Plus size={18} />
-                تسجيل مصروف
-              </Button>
-            </div>
-            <DateRange
-              from={from}
-              to={to}
-              onChange={onDates}
-              canAll={canAll}
-              all={allBranches}
-              onAll={onAllBranches}
-            />
-            <div className="daily-metrics">
-              {metrics.map((m) => (
-                <article key={m.label}>
-                  <div>
-                    <span className={m.theme}>
-                      <m.icon size={22} />
-                    </span>
-                    <p>{m.label}</p>
-                  </div>
-                  <strong>
-                    {enabled && canFinance && m.value !== undefined
-                      ? money(m.value)
-                      : "—"}
-                  </strong>
-                  <small>{m.note}</small>
-                </article>
-              ))}
-            </div>
-            <div className="daily-account-grid">
-              <section className="panel">
-                <div className="daily-section-title">
-                  <div>
-                    <h2>المصاريف المسجلة</h2>
-                    <p>راجع أين تذهب مصاريف الفرع.</p>
-                  </div>
-                </div>
-                {expenses.length ? (
-                  <div className="daily-movement-list">
-                    {expenses.map((e) => (
-                      <div key={e.id}>
-                        <span className="expense-mark">
-                          <Wallet size={19} />
-                        </span>
-                        <div>
-                          <strong>{String(e.title)}</strong>
-                          <small>{localDay(String(e.created_at))}</small>
-                        </div>
-                        <b>{money(Number(e.amount))}</b>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="daily-empty small">
-                    <Wallet size={35} />
-                    <p>لا توجد مصاريف مسجلة في هذه الفترة.</p>
-                  </div>
-                )}
-              </section>
-              <section className="panel daily-profit-note">
-                <span className="green">
-                  <Wallet size={26} />
-                </span>
-                <h2>كيف نحسب الربح؟</h2>
-                <p>
-                  صافي المبيعات دون الضريبة
-                  <br />− تكلفة شراء القطع التي بعتها
-                  <br />− المصاريف المسجلة
-                </p>
-                <hr />
-                <strong>النتيجة = الربح التقديري</strong>
-                <p>
-                  المرتجعات تُحسب في يوم إرجاعها. الربح يختلف عن النقد الموجود في
-                  الصندوق.
-                </p>
-                <Button variant="outline" onClick={() => window.print()}>
-                  <Printer size={17} />
-                  طباعة الحسابات
-                </Button>
-              </section>
-            </div>
           </>
         )}
         {current === "history" && (
@@ -893,11 +643,6 @@ export function DailyDesk(props: Props) {
             </section>
           </>
         )}
-        <footer className="daily-footer">
-          <strong>najd</strong>
-          <span>حسابات مرتبة. شغل أخف.</span>
-          <small>البيع لا يُحفظ إلا بعد تأكيده بنجاح.</small>
-        </footer>
       </main>
       <Modal
         title={
@@ -911,9 +656,7 @@ export function DailyDesk(props: Props) {
                 ? dialog.mode === "add"
                   ? "إضافة بضاعة"
                   : "تعديل الكمية الفعلية"
-                : dialog?.type === "expense"
-                  ? "تسجيل مصروف"
-                  : dialog?.type === "return"
+                : dialog?.type === "return"
                     ? "تأكيد إرجاع الفاتورة"
                     : dialog?.type === "receipt"
                       ? "تفاصيل الفاتورة"
@@ -924,26 +667,6 @@ export function DailyDesk(props: Props) {
           if (!busy) setDialog(null);
         }}
       >
-        {dialog?.type === "setup" && (
-          <div className="stack">
-            <p>
-              يحتاج najd إلى قاعدة بيانات مستقلة وحساب دخول حتى يحفظ مبيعاتك
-              وكميات الفرعين بأمان.
-            </p>
-            <div className="branch-setup-list">
-              {branchNames.map((name) => (
-                <div key={name}>
-                  <Store size={19} />
-                  {name}
-                </div>
-              ))}
-            </div>
-            <p className="muted">
-              الواجهة لا تستخدم كميات أو مبيعات وهمية. ستصبح أزرار البيع متاحة
-              بعد تفعيل الحساب وربط المنتجات.
-            </p>
-          </div>
-        )}
         {dialog?.type === "login" && (
           <AccountForm
             onSuccess={() => {
@@ -980,7 +703,7 @@ export function DailyDesk(props: Props) {
                   variant_id: dialog.product!.id,
                   quantity: amount,
                   expected_qty: dialog.expected,
-                  reason: String(form.get("reason")),
+                  reason: String(form.get("reason") || "تعديل الكمية"),
                 });
             }}
           >
@@ -1017,7 +740,7 @@ export function DailyDesk(props: Props) {
                 name="reason"
                 minLength={3}
                 required
-                defaultValue={dialog.mode === "add" ? "استلام بضاعة" : ""}
+                defaultValue={dialog.mode === "add" ? "استلام بضاعة" : "تعديل الكمية"}
                 placeholder="جرد فعلي، تصحيح إدخال، بضاعة تالفة…"
               />
             </label>
@@ -1034,44 +757,6 @@ export function DailyDesk(props: Props) {
                   ? "إضافة القطع للمخزون"
                   : "حفظ الكمية الجديدة"}
             </Button>
-          </form>
-        )}
-        {dialog?.type === "expense" && (
-          <form
-            className="stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const form = new FormData(e.currentTarget);
-              void save("expense", {
-                title: String(form.get("title")),
-                amount: Math.round(Number(form.get("amount")) * 100),
-              });
-            }}
-          >
-            <p className="muted">
-              سيُسجَّل المصروف على {String(selectedBranch?.name)}.
-            </p>
-            <label>
-              وصف المصروف
-              <input
-                name="title"
-                minLength={2}
-                required
-                placeholder="كهرباء، إيجار، تغليف…"
-                autoFocus
-              />
-            </label>
-            <label>
-              المبلغ بالشيكل ₪
-              <input
-                name="amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                required
-              />
-            </label>
-            <Button disabled={busy}>حفظ المصروف</Button>
           </form>
         )}
         {dialog?.type === "receipt" && (
@@ -1291,6 +976,7 @@ function QuickProductForm({
             dir="ltr"
             value={barcode}
             onChange={(e) => setBarcode(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.form?.querySelector<HTMLInputElement>('[name="price"]')?.focus(); } }}
             placeholder="امسح باركود القطعة هنا"
           />
           <Button
@@ -1308,13 +994,12 @@ function QuickProductForm({
       </label>
       <div className="form-grid">
         <label>
-          تكلفة الشراء ₪
+          تكلفة الشراء ₪ (اختياري)
           <input
             name="cost"
             type="number"
             step="0.01"
             min="0"
-            required
             defaultValue={(product?.cost ?? 0) / 100}
           />
         </label>
