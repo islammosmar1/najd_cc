@@ -9,6 +9,7 @@ import {
   checkoutSchema,
   OperationError,
   normalizeBarcode,
+  CameraScanGate,
 } from "../src/lib/domain.ts";
 const variant = {
   id: "10000000-0000-4000-8000-000000000001",
@@ -29,6 +30,17 @@ test("repeated scans increment the cart without deducting inventory", () => {
   const cart = addScan(addScan([], variant, available), variant, available);
   assert.equal(cart[0].qty, 2);
   assert.equal(available, 20);
+});
+test("automatic camera counts one visible barcode and re-arms after removal", () => {
+  const gate = new CameraScanGate();
+  assert.equal(gate.accept("00123", 0), true);
+  assert.equal(gate.accept("00123", 500), false);
+  assert.equal(gate.accept("00123", 5000), false);
+  gate.absent(5500);
+  assert.equal(gate.accept("00123", 5600), false);
+  gate.absent(6700);
+  assert.equal(gate.accept("00123", 6800), true);
+  assert.equal(gate.accept("999", 6900), true);
 });
 test("scanner normalization preserves identity and leading zeros", () => {
   assert.equal(normalizeBarcode("\u200f ٠٠١٢٣۴۵\r\n"), "0012345");

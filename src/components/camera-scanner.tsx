@@ -2,8 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserCodeReader, BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { DecodeHintType } from "@zxing/library";
+import { CameraScanGate } from "@/lib/domain";
 function reader() {
- return new BrowserMultiFormatReader(new Map([[DecodeHintType.TRY_HARDER, true]]), { delayBetweenScanAttempts: 180, delayBetweenScanSuccess: 1200 });
+ return new BrowserMultiFormatReader(new Map([[DecodeHintType.TRY_HARDER, true]]), { delayBetweenScanAttempts: 180, delayBetweenScanSuccess: 180 });
 }
 export function CameraScanner({ onScan }: { onScan: (text: string) => boolean }) {
  const video = useRef<HTMLVideoElement>(null);
@@ -14,15 +15,14 @@ export function CameraScanner({ onScan }: { onScan: (text: string) => boolean })
  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
  const [busy, setBusy] = useState(false);
  const mounted = useRef(false);
- const recent = useRef({ text: "", at: 0 });
+ const gate = useRef(new CameraScanGate());
  useEffect(() => { callback.current = onScan; }, [onScan]);
  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
  function accept(text: string) {
-   if (recent.current.text === text) return;
-   recent.current = { text, at: Date.now() };
+   if (!gate.current.accept(text, Date.now())) return;
    setDecoded(text);
    const accepted = callback.current(text);
-   if (!accepted) setError("تمت قراءة الرمز، لكن لم يُضف للفاتورة. راجع الرقم المحفوظ للمنتج والكمية المتوفرة.");
+   setError(accepted ? "" : "تمت قراءة الرمز، لكن لم يُضف للفاتورة. راجع الرقم المحفوظ للمنتج والكمية المتوفرة.");
  }
  const acceptRef = useRef(accept);
  useEffect(() => { acceptRef.current = accept; });
@@ -34,7 +34,9 @@ export function CameraScanner({ onScan }: { onScan: (text: string) => boolean })
      ...(device ? {deviceId: {exact: device}} : {facingMode: {ideal: "environment"}}),
      width: {ideal: 1920}, height: {ideal: 1080}
    }, audio: false }, video.current!, result => {
-     if (!cancelled && result) acceptRef.current(result.getText());
+     if (cancelled) return;
+     if (result) acceptRef.current(result.getText());
+     else gate.current.absent(Date.now());
    }).then(async control => {
      if (cancelled) { control.stop(); return; }
      controls = control;
@@ -54,7 +56,7 @@ export function CameraScanner({ onScan }: { onScan: (text: string) => boolean })
      <option value="">اختيار تلقائي</option>{devices.map((item, i) => <option key={item.deviceId} value={item.deviceId}>{item.label || "كاميرا " + (i + 1)}</option>)}
    </select></label>}
    <div className="camera-preview"><video ref={video} className="camera" muted playsInline /><div className="camera-target" aria-hidden="true" /></div>
-   <p>ضع الباركود كاملًا داخل الإطار، مع إضاءة جيدة وبدون انعكاس. حرّكه ببطء حتى تتضح الخطوط.</p>
+   <p>قراءة تلقائية بدون التقاط. ضع الباركود كاملًا داخل الإطار. لقطعة أخرى تحمل الرمز نفسه، أبعده ثانية ثم أعده.</p>
    {decoded && <p role="status">الرمز المقروء: <strong dir="ltr">{decoded}</strong></p>}
    {error && <p role="alert" className="error-banner">{error}</p>}
    <label>قراءة باركود من صورة
@@ -63,7 +65,7 @@ export function CameraScanner({ onScan }: { onScan: (text: string) => boolean })
        if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {setError("اختر صورة JPG أو PNG أو WebP أصغر من 10 ميغابايت.");return;}
        setBusy(true);setError("");
        const url = URL.createObjectURL(file);
-       try { const result = await reader().decodeFromImageUrl(url);if (mounted.current) {recent.current = {text:"",at:0};acceptRef.current(result.getText());} }
+       try { const result = await reader().decodeFromImageUrl(url);if (mounted.current) {gate.current.reset();acceptRef.current(result.getText());} }
        catch { if (mounted.current) setError("لم نتمكن من قراءة الصورة. اختر الصورة الأصلية للباركود كاملة وبوضوح، أو اكتب الرقم يدويًا."); }
        finally { URL.revokeObjectURL(url);if (mounted.current) setBusy(false); }
      }} />

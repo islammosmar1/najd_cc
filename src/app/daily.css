@@ -1653,3 +1653,7 @@
 .camera-target {position:absolute;inset:28% 8%;border:2px solid #57e3ab;border-radius:8px;pointer-events:none;}
 .barcode-camera p {font-size:13px;line-height:1.8;}
 @media(max-width:650px){.daily-sell .scanner-box {flex-wrap:wrap}.daily-sell .scanner-box form{flex:1;min-width:130px}.daily-sell .scanner-box>.btn{min-width:42px;padding-inline:9px;}}
+
+.auto-camera {padding:14px;margin:12px 0;background:white;border:1px solid #dce6f5;border-radius:12px;}
+.auto-camera>strong{display:block;font-size:14px;margin-bottom:10px;color:#245b47;}
+.auto-camera .camera-preview video{max-height:220px;}

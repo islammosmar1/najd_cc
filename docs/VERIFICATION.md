@@ -1,3 +1,11 @@
+# Automatic continuous camera scanning — 2026-11-18
+
+The authenticated sale screen now starts its inline camera automatically, keeps it open after scans, and stops it on leaving sales, logging out, or opening a committed receipt. Pending checkouts suspend scanning. A visible stop/start control remains available. Browser camera permission is still required.
+
+A presence gate counts a barcode held in view once, then re-arms after one second without detection; different codes can follow without a capture button. Validation: production build, TypeScript, ESLint, 12 domain checks and five browser checks passed. The camera browser check uses an actual canvas MediaStream: a CODE128 is recognized without clicking a scanner/capture button, remains one unit while held for 2.2 seconds, and becomes two after removal/re-presentation. It uses isolated API/auth fixtures and a virtual stream, not the user's physical webcam or production sales. Real-device focus and permission still depend on the browser/hardware.
+
+## Earlier verification
+
 # Laptop barcode scanning update — 2026-11-18
 
 The scanner now requests ideal 1920x1080 video, enables TRY_HARDER decoding, allows camera selection when available, and provides a barcode-image fallback even when camera permission/device access fails. Decoded unmatched values are shown explicitly; identical camera results are suppressed within the dialog. Matching normalizes Unicode formatting and Arabic/fullwidth digits while retaining leading zeros and rejecting ambiguous matches. A visible Add button supports manual entry.

@@ -103,3 +103,21 @@ export class ScanGate {
     return true;
   }
 }
+// A visible barcode is one presentation, regardless of the number of frames.
+// Re-arm only after it has been absent for a full second.
+export class CameraScanGate {
+  private code = "";
+  private seen = 0;
+  accept(text: string, now: number) {
+    const code = normalizeBarcode(text);
+    if (!code) return false;
+    const duplicate = this.code === code;
+    this.code = code;
+    this.seen = now;
+    return !duplicate;
+  }
+  absent(now: number) {
+    if (now - this.seen >= 1000) this.code = "";
+  }
+  reset() { this.code = ""; }
+}

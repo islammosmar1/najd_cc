@@ -63,7 +63,7 @@ export function POS({
 
   const [busy, setBusy] = useState(false);
   const [hasPending, setHasPending] = useState(false);
-  const [camera, setCamera] = useState(false);
+  const [camera, setCamera] = useState(true);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
 
   const input = useRef<HTMLInputElement>(null);
@@ -133,7 +133,6 @@ export function POS({
     }
     add(v);
     setCode("");
-    setCamera(false);
     input.current?.focus();
     return true;
   }
@@ -258,13 +257,20 @@ export function POS({
           <Button variant="outline" disabled={!code.trim() || hasPending} onClick={() => scan(code)}>إضافة</Button>
           <Button
             variant="outline"
-            onClick={() => setCamera(true)}
+            onClick={() => setCamera(value => !value)}
             disabled={hasPending}
-            aria-label="مسح بالكاميرا"
+            aria-label={camera ? "إيقاف الكاميرا" : "تشغيل الكاميرا"}
+            aria-pressed={camera}
           >
             <Camera size={19} />
           </Button>
         </div>
+        {camera && enabled && !hasPending && !receipt && (
+          <section className="auto-camera" aria-label="قراءة الباركود التلقائية">
+            <strong>الكاميرا تقرأ تلقائيًا</strong>
+            <CameraScanner onScan={scan} />
+          </section>
+        )}
         <input
           className="product-search"
           aria-label="ابحث عن منتج للبيع"
@@ -459,13 +465,6 @@ export function POS({
           <Printer size={17} />
           طباعة الإيصال
         </Button>
-      </Modal>
-      <Modal
-        title="مسح الباركود بالكاميرا"
-        open={camera}
-        onClose={() => setCamera(false)}
-      >
-        {camera && <CameraScanner onScan={scan} />}
       </Modal>
     </div>
   );
