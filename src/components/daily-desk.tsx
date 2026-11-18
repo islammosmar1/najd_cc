@@ -12,7 +12,6 @@ import {
   RefreshCw,
   LogOut,
   Settings2,
-  CheckCircle2,
   TriangleAlert,
   Printer,
   PencilLine,
@@ -21,7 +20,6 @@ import {
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { authClient } from "@/lib/auth/client";
-import { branchNames } from "@/lib/company";
 import { variants, type Dataset, type Row } from "@/lib/types";
 import { type Variant } from "@/lib/domain";
 import { localDay } from "@/lib/dates";
@@ -94,10 +92,8 @@ export function DailyDesk(props: Props) {
     error,
     from,
     to,
-    allBranches,
     onAllBranches,
     onDates,
-    onBranch,
     onSigned,
     refresh,
     execute,
@@ -109,7 +105,6 @@ export function DailyDesk(props: Props) {
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
   const branches = data.branches.filter((b) => b.business_id === business);
-  const selectedBranch = branches.find((b) => b.id === branch);
   const memberships = data.memberships.filter(
     (m) =>
       m.business_id === business &&
@@ -121,11 +116,6 @@ export function DailyDesk(props: Props) {
   );
   const canStock = canManage || memberships.some((m) => m.role === "inventory");
   const canSell = canManage || memberships.some((m) => m.role === "cashier");
-  const canAll = memberships.some(
-    (m) =>
-      !m.branch_id &&
-      ["owner", "super_admin", "accountant"].includes(String(m.role)),
-  );
   const current =
     tab === "sell" && signed && memberships.length > 0 && !canSell
       ? canStock
@@ -134,12 +124,7 @@ export function DailyDesk(props: Props) {
       : tab;
   const enabled = configured && signed && Boolean(branch) && online && !error;
   const catalog = variants(data, business, branch);
-  const stock = (id: string, br = branch) =>
-    Number(
-      data.branch_inventory.find(
-        (i) => i.branch_id === br && i.variant_id === id,
-      )?.quantity ?? 0,
-    );
+  const stock = (id: string) => data.branch_inventory.filter(i => i.variant_id === id && i.business_id === business).reduce((sum, i) => sum + Number(i.quantity), 0);
   const openShift = data.cash_shifts.find(
     (s) => s.user_id === data.user_id && s.branch_id === branch && !s.closed_at,
   );
@@ -155,7 +140,7 @@ export function DailyDesk(props: Props) {
     .filter(
       (s) =>
         s.business_id === business &&
-        (allBranches || s.branch_id === branch) &&
+        true &&
         localDay(String(s.created_at)) >= from &&
         localDay(String(s.created_at)) <= to,
     )
@@ -256,36 +241,7 @@ export function DailyDesk(props: Props) {
         </div>
       </header>
       <main className="daily-main">
-        <section className="daily-branches" aria-label="اختر الفرع">
-          <span className="branch-prompt">
-            <Store size={19} />
-            أنت تعمل الآن في
-          </span>
-          <div className="branch-options">
-            {branches.length
-              ? branches.map((b) => (
-                  <button
-                    key={b.id}
-                    disabled={pending}
-                    className={branch === b.id ? "selected" : ""}
-                    aria-pressed={branch === b.id}
-                    onClick={() => onBranch(b.id)}
-                  >
-                    <Store size={20} />
-                    <strong>{String(b.name)}</strong>
-                    {branch === b.id && <CheckCircle2 size={18} />}
-                  </button>
-                ))
-              : branchNames.map((name) => (
-                  <div className="unconfigured-branch" key={name}>
-                    <Store size={19} />
-                    <strong>{name}</strong>
-                    <small>بانتظار تفعيل الحساب</small>
-                  </div>
-                ))}
-          </div>
-
-        </section>
+        <div className="shared-stock-note"><Package size={19} /><strong>مخزون إجمالي واحد</strong><span>اختر الشنطة بالاسم أو الصورة · الباركود اختياري</span></div>
         {!configured && <div className="error-banner">تعذر الاتصال بالخدمة. حاول مجددًا لاحقًا.</div>}
         {configured && !signed && (
           <div className="daily-notice">
@@ -360,15 +316,12 @@ export function DailyDesk(props: Props) {
               <div>
                 <h2>فاتورة بيع جديدة</h2>
                 <p>
-                  {selectedBranch
-                    ? String(selectedBranch.name)
-                    : "اختر الفرع بعد تسجيل الدخول"}{" "}
-                  · تُخصم الكمية من هذا الفرع عند تأكيد البيع
+                  اختر المنتج بالاسم أو الصورة، أو امسح باركوده. الكمية تنقص من المخزون الإجمالي بعد تأكيد البيع.
                 </p>
               </div>
               <span className="daily-shortcut">
                 <ScanLine size={17} />
-                جاهز للمسح <kbd>F2</kbd>
+                اختيار أو مسح <kbd>F2</kbd>
               </span>
             </div>
             <POS
@@ -390,7 +343,7 @@ export function DailyDesk(props: Props) {
             <div className="daily-section-title">
               <div>
                 <h2>المنتجات والكميات</h2>
-                <p>كل منتجاتك، وكميات الفرعين، من مكان واحد.</p>
+                <p>كل منتجاتك وكمياتها الإجمالية من مكان واحد.</p>
               </div>
               <Button
                 disabled={!enabled || !canManage}
@@ -415,8 +368,7 @@ export function DailyDesk(props: Props) {
                   />
                 </label>
                 <span>
-                  {catalog.length} منتج ·{" "}
-                  {String(selectedBranch?.name || "اختر الفرع")}
+                  {catalog.length} منتج
                 </span>
               </div>
               <div className="table-wrap">
@@ -425,14 +377,7 @@ export function DailyDesk(props: Props) {
                     <tr>
                       <th>المنتج</th>
                       <th>سعر البيع</th>
-                      {branches.length
-                        ? branches.map((b) => (
-                            <th key={b.id}>{String(b.name)}</th>
-                          ))
-                        : branchNames.map((n) => <th key={n}>{n}</th>)}
-                      <th>
-                        تعديل {String(selectedBranch?.name || "الفرع المختار")}
-                      </th>
+                      <th>الكمية الإجمالية</th><th>تعديل</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -445,30 +390,14 @@ export function DailyDesk(props: Props) {
                             </span>
                             <div>
                               <strong>{p.name}</strong>
-                              <small dir="ltr">{p.barcode}</small>
+                              <small dir="ltr">{p.sku}{p.barcode && !p.barcode.startsWith("AUTO-") ? " · " + p.barcode : ""}</small>
                             </div>
                           </div>
                         </td>
                         <td>
                           <strong>{money(p.price)}</strong>
                         </td>
-                        {branches.map((b) => (
-                          <td key={b.id}>
-                            <span
-                              className={
-                                "stock-number " +
-                                (stock(p.id, b.id) === 0
-                                  ? "empty-stock"
-                                  : stock(p.id, b.id) <= p.min_stock
-                                    ? "low-stock"
-                                    : "")
-                              }
-                            >
-                              {stock(p.id, b.id)}
-                              <small>قطعة</small>
-                            </span>
-                          </td>
-                        ))}
+                        <td><span className="stock-number">{stock(p.id)}<small>قطعة</small></span></td>
                         <td>
                           <div className="daily-row-actions">
                             <Button
@@ -530,7 +459,7 @@ export function DailyDesk(props: Props) {
                   <p>
                     {search
                       ? "جرّب اسم المنتج أو الباركود الكامل."
-                      : "أدخل الاسم والسعر والباركود وكمية كل فرع. لا تحتاج إلى إعدادات معقدة."}
+                      : "أدخل اسم الشنطة وسعرها وكميتها الإجمالية. الصورة والباركود اختياريان."}
                   </p>
                   {!search && (
                     <Button
@@ -558,8 +487,8 @@ export function DailyDesk(props: Props) {
               from={from}
               to={to}
               onChange={onDates}
-              canAll={canAll}
-              all={allBranches}
+              canAll={false}
+              all={true}
               onAll={onAllBranches}
             />
             <section className="panel">
@@ -680,7 +609,7 @@ export function DailyDesk(props: Props) {
           <QuickProductForm
             key={dialog.product?.id || "new"}
             product={dialog.product}
-            branches={branches}
+            branches={branches.filter(b => b.id === branch)}
             busy={busy}
             onSave={(p) => save("product", p)}
           />
@@ -711,7 +640,7 @@ export function DailyDesk(props: Props) {
               <Package size={25} />
               <div>
                 <strong>{dialog.product?.name}</strong>
-                <small>{String(selectedBranch?.name)}</small>
+                <small>المخزون الإجمالي</small>
               </div>
               <b>
                 {dialog.expected}
@@ -746,7 +675,7 @@ export function DailyDesk(props: Props) {
             </label>
             {dialog.mode === "set" && (
               <p className="muted">
-                هذا يضبط الكمية الإجمالية في الفرع المختار. إذا تغيّر المخزون
+                هذا يضبط الكمية الإجمالية للمنتج. إذا تغيّر المخزون
                 أثناء التعديل، سنطلب منك مراجعته قبل الحفظ.
               </p>
             )}
@@ -806,7 +735,7 @@ export function DailyDesk(props: Props) {
               </Button>
               {canManage &&
                 dialog.sale?.status === "completed" &&
-                dialog.sale.branch_id === branch && (
+                (
                   <Button
                     variant="outline"
                     onClick={() =>
@@ -826,13 +755,14 @@ export function DailyDesk(props: Props) {
               e.preventDefault();
               void save("return", {
                 id: dialog.sale!.id,
+                branch_id: dialog.sale!.branch_id,
                 reason: String(new FormData(e.currentTarget).get("reason")),
               });
             }}
           >
             <p>
               سيُسجَّل إرجاع نقدي بقيمة <b>{money(Number(dialog.sale?.total))}</b>{" "}
-              وتعود القطع إلى مخزون الفرع. سلّم المبلغ للعميل بعد نجاح التسجيل.
+              وتعود القطع إلى المخزون الإجمالي. سلّم المبلغ للعميل بعد نجاح التسجيل.
             </p>
             <label>
               سبب الإرجاع
@@ -921,7 +851,9 @@ function QuickProductForm({
   busy: boolean;
   onSave: (p: Record<string, unknown>) => Promise<void>;
 }) {
-  const [barcode, setBarcode] = useState(product?.barcode || "");
+  const [barcode, setBarcode] = useState(product?.barcode?.startsWith("AUTO-") ? "" : product?.barcode || "");
+  const [photo, setPhoto] = useState(product?.image_url || "");
+  const [reading, setReading] = useState(false);
   const [sku] = useState(
     () => product?.sku || "NJ-" + crypto.randomUUID().slice(0, 12),
   );
@@ -942,13 +874,13 @@ function QuickProductForm({
           min_stock: product?.min_stock ?? 5,
           category: product?.category || "",
           description: product?.description || "",
-          image_url: product?.image_url || "",
+          image_url: photo,
           ...(product
             ? { product_id: product.product_id, variant_id: product.id }
             : {
                 initial_stock: branches.map((b) => ({
                   branch_id: b.id,
-                  quantity: Number(form.get("stock-" + b.id) || 0),
+                  quantity: Number(form.get("quantity") || 0),
                 })),
               }),
         });
@@ -963,33 +895,53 @@ function QuickProductForm({
           maxLength={160}
           defaultValue={product?.name}
           autoFocus
-          placeholder="مثال: كريم ترطيب 50 مل"
+          placeholder="مثال: شنطة كتف سوداء"
         />
       </label>
       <label>
-        الباركود
+        صورة الشنطة (اختياري)
+        <input type="file" accept="image/jpeg,image/png,image/webp" disabled={reading || busy}
+          onChange={async e => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024) {
+              toast.error("اختر صورة JPG أو PNG أو WebP أصغر من 8 ميغابايت"); return;
+            }
+            setReading(true);
+            try {
+              const bitmap = await createImageBitmap(file);
+              const scale = Math.min(1, 360 / Math.max(bitmap.width, bitmap.height));
+              const canvas = document.createElement("canvas");
+              canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+              canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+              const context = canvas.getContext("2d");
+              if (!context) throw Error();
+              context.fillStyle = "white"; context.fillRect(0, 0, canvas.width, canvas.height);
+              context.drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
+              const result = canvas.toDataURL("image/jpeg", 0.65);
+              if (result.length > 160000) throw Error();
+              setPhoto(result);
+            } catch { toast.error("تعذر تجهيز الصورة. جرّب صورة أخرى."); }
+            finally { setReading(false); }
+          }} />
+      </label>
+      {photo && <div className="product-photo-preview">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={photo} alt="صورة المنتج" width={90} height={90} />
+        <Button type="button" variant="ghost" onClick={() => setPhoto("")}>إزالة الصورة</Button>
+      </div>}
+      <label>
+        الباركود (اختياري)
         <div className="inline">
           <input
             name="barcode"
             aria-label="باركود المنتج الجديد"
-            required
             dir="ltr"
             value={barcode}
             onChange={(e) => setBarcode(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.form?.querySelector<HTMLInputElement>('[name="price"]')?.focus(); } }}
             placeholder="امسح باركود القطعة هنا"
           />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() =>
-              setBarcode(
-                "NJ" + crypto.randomUUID().replaceAll("-", "").slice(0, 16),
-              )
-            }
-          >
-            توليد باركود
-          </Button>
         </div>
       </label>
       <div className="form-grid">
@@ -1017,27 +969,10 @@ function QuickProductForm({
       </div>
       {!product && (
         <div className="initial-stock-fields">
-          <h3>الكمية الموجودة في كل فرع</h3>
-          {branches.map((b) => (
-            <label key={b.id}>
-              <span>
-                <Store size={17} />
-                {String(b.name)}
-              </span>
-              <input
-                name={"stock-" + b.id}
-                aria-label={"كمية " + String(b.name)}
-                type="number"
-                min="0"
-                step="1"
-                defaultValue="0"
-                required
-              />
-            </label>
-          ))}
+          <label>الكمية الإجمالية<input name="quantity" aria-label="الكمية الإجمالية" type="number" min="0" max="1000000" step="1" defaultValue="0" required /></label>
         </div>
       )}
-      <Button disabled={busy}>
+      <Button disabled={busy || reading}>
         {busy
           ? "جارٍ الحفظ…"
           : product

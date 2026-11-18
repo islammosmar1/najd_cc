@@ -253,7 +253,7 @@ export function POS({
         <input
           className="product-search"
           aria-label="ابحث عن منتج للبيع"
-          placeholder="ابحث باسم المنتج أو الباركود…"
+          placeholder="ابحث باسم الشنطة أو رقم الصنف أو الباركود…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -262,10 +262,11 @@ export function POS({
             .filter(
               (p) =>
                 p.active &&
-                (p.name + p.barcode).toLowerCase().includes(search.toLowerCase()),
+                (p.name + p.sku + p.barcode).toLowerCase().includes(search.toLowerCase()),
             )
             .map((p) => (
               <button
+                aria-label={"إضافة " + p.name + " إلى الفاتورة"}
                 disabled={!stock(p.id) || hasPending}
                 className="product-tile"
                 key={p.id}
@@ -278,8 +279,10 @@ export function POS({
                   else toast.error("الكمية المتوفرة غير كافية");
                 }}
               >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {p.image_url && <img className="sale-product-photo" src={p.image_url} alt={p.name} width={96} height={96} loading="lazy" />}
                 <strong>{p.name}</strong>
-                <span dir="ltr">{p.barcode}</span>
+                <span dir="ltr">{p.sku}{p.barcode && !p.barcode.startsWith("AUTO-") ? " · " + p.barcode : ""}</span>
                 <div>
                   <b>{money(p.price)}</b>
                   <small>{stock(p.id)} متوفر</small>
@@ -302,8 +305,8 @@ export function POS({
           {!cart.length ? (
             <div className="empty">
               <ShoppingBag size={40} />
-              <h3>السلة جاهزة لأول منتج</h3>
-              <p>امسح الباركود أو اختر منتجًا</p>
+              <h3>اختر الشنطة لبدء البيع</h3>
+              <p>اضغط اسم الشنطة أو صورتها، أو ابحث عنها</p>
             </div>
           ) : (
             cart.map((l) => (
@@ -397,7 +400,7 @@ export function POS({
             تفريغ السلة
           </Button>
           <p className="pos-help">
-            تنقص الكمية عند تأكيد البيع فقط، من الفرع المختار.
+            تنقص الكمية من المخزون الإجمالي عند تأكيد البيع.
           </p>
         </div>
       </section>

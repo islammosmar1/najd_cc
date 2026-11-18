@@ -49,7 +49,9 @@ export async function GET(request: NextRequest) {
           );
           entries[table] = rows;
         }
-        return { ...entries, financial: null };
+        const pool = await client.query("select business_id,branch_id from inventory_pools order by business_id");
+        const inventoryBranch = pool.rows.find(row => !b || row.business_id === b)?.branch_id;
+        return { ...entries, inventory_branch_id: inventoryBranch, financial: null };
       },
       true,
     );

@@ -101,6 +101,19 @@ export async function rpc(
 ) {
   if (!functions.includes(name)) throw Error("عملية غير مسموحة");
   return asUser(id, async (client) => {
+    const payload = args[name === "command" ? 1 : 0];
+    if (["checkout", "quick_checkout", "command", "set_stock", "add_product"].includes(name) && payload && typeof payload === "object") {
+      const action = name === "command" ? String(args[0]) : name;
+      const p = payload as Record<string, unknown>;
+      const business = p.business_id || (await client.query("select business_id from branches where id=$1", [p.branch_id])).rows[0]?.business_id;
+      const shared = (await client.query("select branch_id from inventory_pools where business_id=$1", [business])).rows[0]?.branch_id;
+      if (shared && !["return", "cancel_sale"].includes(action)) {
+        p.branch_id = shared;
+        if (name === "quick_checkout") delete p.shift_id;
+        if (Array.isArray(p.initial_stock)) p.initial_stock = [{ branch_id: shared, quantity: p.initial_stock.reduce((sum, item) => sum + Number(item.quantity), 0) }];
+      }
+      if (action === "product" || name === "add_product") p.barcode ||= "AUTO-" + String(p.sku);
+    }
     const params = args.map((_, i) => "$" + (i + 1)).join(",");
     const { rows } = await client.query(
       `select public.${name}(${params}) as result`,

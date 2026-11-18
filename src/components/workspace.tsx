@@ -15,7 +15,7 @@ export function Workspace({configured, signedIn}: {configured: boolean; signedIn
   const [sync, setSync] = useState("");
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState(today());
-  const [allBranches, setAllBranches] = useState(false);
+  const [allBranches, setAllBranches] = useState(true);
   const generation = useRef(0);
   const requestKeys = useRef(new Map<string, string>());
   const refresh = useCallback(async () => {
@@ -42,7 +42,7 @@ export function Workspace({configured, signedIn}: {configured: boolean; signedIn
       if (!r.ok) throw Error(json.error);
       setData(json);
       setBusiness((old) => old || json.businesses[0]?.id || "");
-      setBranch((old) => old || json.branches[0]?.id || "");
+      setBranch((old) => json.inventory_branch_id || old || json.branches[0]?.id || "");
       setSync("");
     } catch (e) {
       if (request === generation.current) setSync((e as Error).message);
@@ -100,7 +100,7 @@ export function Workspace({configured, signedIn}: {configured: boolean; signedIn
             : {
                 ...payload,
                 business_id: business,
-                branch_id: branch || null,
+                branch_id: action === "return" ? payload.branch_id : branch || null,
                 key: payload.key || retryKey,
               },
       }),

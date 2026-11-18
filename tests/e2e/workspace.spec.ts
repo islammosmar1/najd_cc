@@ -6,10 +6,8 @@ test("simple Arabic desk shows the two named branches and protects checkout", as
   await expect(
     page.getByRole("heading", { name: "فاتورة بيع جديدة" }),
   ).toBeVisible();
-  await expect(page.getByText("فرع الستي سنتر", { exact: true })).toBeVisible();
-  await expect(
-    page.getByText("فرع شارع أبو بكر", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("مخزون إجمالي واحد", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", {name:/فرع الستي سنتر|فرع شارع أبو بكر/})).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "تأكيد البيع وخصم الكمية" }),
   ).toBeDisabled();

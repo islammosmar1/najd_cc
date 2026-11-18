@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { emptyData } from "../../src/lib/types";
 
 // Isolated UI contract check. Live PostgreSQL transactions are covered by test:live.
-test("product scanner Enter does not save; two scans save one sale and refresh branch stock", async ({ page }) => {
+for (const withBarcode of [true, false]) test(`shared stock: product photo and ${withBarcode ? "barcode scan" : "sale by name without barcode"}`, async ({ page }) => {
   const business = "10000000-0000-4000-8000-000000000001";
   const branch = "10000000-0000-4000-8000-000000000002";
   const other = "10000000-0000-4000-8000-000000000003";
@@ -13,7 +13,7 @@ test("product scanner Enter does not save; two scans save one sale and refresh b
   const barcode = "0001234567890";
   const data = structuredClone(emptyData);
   Object.assign(data, {
-    user_id: user, email_verified: true,
+    user_id: user, email_verified: true, inventory_branch_id: branch,
     businesses: [{ id: business, tax_bps: 0 }],
     branches: [{ id: branch, business_id: business, name: "فرع الستي سنتر" }, { id: other, business_id: business, name: "فرع شارع أبو بكر" }],
     memberships: [{ id: user, user_id: user, business_id: business, branch_id: null, role: "owner" }],
@@ -26,13 +26,13 @@ test("product scanner Enter does not save; two scans save one sale and refresh b
     const command = route.request().postDataJSON();
     commands.push(command);
     if (command.action === "product") {
-      data.products.push({ id: product, business_id: business, branch_id: branch, name: command.payload.name, active: true });
+      data.products.push({ id: product, business_id: business, branch_id: branch, name: command.payload.name, image_url: command.payload.image_url, active: true });
       data.product_variants.push({ id: variant, business_id: business, branch_id: branch, product_id: product, name: "", sku: command.payload.sku, price: command.payload.price, min_stock: 5 });
-      data.product_barcodes.push({ id: variant, business_id: business, branch_id: branch, variant_id: variant, barcode });
-      data.branch_inventory.push({ id: branch, business_id: business, branch_id: branch, variant_id: variant, quantity: 20 }, { id: other, business_id: business, branch_id: other, variant_id: variant, quantity: 15 });
+      data.product_barcodes.push({ id: variant, business_id: business, branch_id: branch, variant_id: variant, barcode: command.payload.barcode || "AUTO-" + command.payload.sku });
+      data.branch_inventory.push({ id: branch, business_id: business, branch_id: branch, variant_id: variant, quantity: 35 }, { id: other, business_id: business, branch_id: other, variant_id: variant, quantity: 0 });
       await route.fulfill({ json: { id: product } });
     } else if (command.action === "checkout") {
-      data.branch_inventory[0].quantity = 18;
+      data.branch_inventory[0].quantity = 33;
       await route.fulfill({ json: { id: sale, total: 5000, tax: 0, items: [{ variant_id: variant, name: "منتج اختبار", price: 2500, qty: 2, discount: 0 }] } });
     } else await route.fulfill({ status: 400, json: { error: "Unexpected command", rolledBack: true } });
   });
@@ -47,20 +47,29 @@ test("product scanner Enter does not save; two scans save one sale and refresh b
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("اسم المنتج").fill("منتج اختبار");
   const code = dialog.getByRole("textbox", { name: "باركود المنتج الجديد" });
-  await code.fill(barcode); await code.press("Enter");
+  await code.fill(withBarcode ? barcode : ""); await code.press("Enter");
   expect(commands).toHaveLength(0);
   await expect(dialog.getByLabel("سعر البيع ₪")).toBeFocused();
   await dialog.getByLabel("سعر البيع ₪").fill("25");
-  await dialog.getByRole("spinbutton", { name: "كمية فرع الستي سنتر", exact: true }).fill("20");
-  await dialog.getByRole("spinbutton", { name: "كمية فرع شارع أبو بكر", exact: true }).fill("15");
+  await dialog.getByRole("spinbutton", { name: "الكمية الإجمالية", exact: true }).fill("35");
+  const png = await page.evaluate(() => { const c=document.createElement('canvas'); c.width=32; c.height=32; const ctx=c.getContext('2d')!; ctx.fillStyle='red';ctx.fillRect(0,0,32,32);return c.toDataURL('image/png').split(',')[1]; });
+  await dialog.getByLabel("صورة الشنطة (اختياري)").setInputFiles({name:"bag.png",mimeType:"image/png",buffer:Buffer.from(png,"base64")});
+  await expect(dialog.getByRole("img",{name:"صورة المنتج"})).toBeVisible();
   await dialog.getByRole("button", { name: "حفظ المنتج والكميات" }).click();
-  await expect(page.getByRole("cell", { name: "منتج اختبار " + barcode, exact: true })).toBeVisible();
-  expect(commands[0].payload.barcode).toBe(barcode);
+  await expect(page.locator(".daily-product-title strong")).toHaveText("منتج اختبار");
+  expect(commands[0].payload.barcode).toBe(withBarcode ? barcode : "");
+  expect(commands[0].payload.image_url).toMatch(/^data:image/);
+  expect(commands[0].payload.initial_stock).toEqual([{branch_id:branch,quantity:35}]);
   await page.getByRole("button", { name: /^البيع/ }).click();
   const scanner = page.getByRole("textbox", { name: "باركود المنتج", exact: true });
-  await scanner.fill(barcode); await scanner.press("Enter");
-  await page.waitForTimeout(160);
-  await scanner.fill(barcode); await scanner.press("Enter");
+  if (withBarcode) {
+    await scanner.fill(barcode); await scanner.press("Enter"); await page.waitForTimeout(160);
+    await scanner.fill(barcode); await scanner.press("Enter");
+  } else {
+    const tile = page.getByRole("button", { name:"إضافة منتج اختبار إلى الفاتورة",exact:true });
+    await expect(tile.getByRole("img")).toBeVisible();
+    await tile.click(); await tile.click();
+  }
   await expect(page.getByRole("spinbutton", { name: "كمية منتج اختبار", exact: true })).toHaveValue("2");
   expect(commands.filter(c => c.action === "checkout")).toHaveLength(0);
   await page.getByRole("button", { name: /تأكيد البيع وخصم الكمية/ }).click();
@@ -71,7 +80,7 @@ test("product scanner Enter does not save; two scans save one sale and refresh b
   await page.getByRole("button", { name: "بيع جديد", exact: true }).click();
   await page.getByRole("button", { name: /المنتجات والكميات/ }).click();
   const row = page.getByRole("row").filter({ hasText: "منتج اختبار" });
-  await expect(row).toContainText("18");
-  await expect(row).toContainText("15");
-  await page.screenshot({ path: ".local/najd-simple-inventory.png", fullPage: true });
+  await expect(row).toContainText("33");
+  await expect(page.getByRole("columnheader",{name:"الكمية الإجمالية",exact:true})).toBeVisible();
+  await page.screenshot({ path: `.local/najd-shared-${withBarcode}.png`, fullPage: true });
 });

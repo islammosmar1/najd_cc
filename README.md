@@ -1,3 +1,5 @@
+> Latest: products can be sold by name, product number or uploaded photo; physical barcodes are optional. najd now uses one shared total quantity per product. Migration 004 retains a private pre-merge snapshot and keeps original branches and receipts for history. Legacy returns replenish the shared pool. The API chooses the inventory pool on the server; callers cannot select a separate stock bucket. Uploaded JPEG/PNG/WebP photos are resized in the browser and stored with the product in Neon.
+
 > Current interface (2026-11-18): only Sale, Products/Quantities and Sales History. The expanded administration workspace, expense/report panels and payment dialog have been removed. Scan into a cart, edit quantities, then confirm a cash sale with one button. Neon persists real product/branch inventory and atomically commits sales; no local demo fallback.
 
 # najd — الحسابات والبيع بالباركود

@@ -28,6 +28,7 @@ export type Dataset = {
   financial: Record<string, number> | null;
   user_id: string;
   email_verified?: boolean;
+  inventory_branch_id?: string;
 };
 export const emptyData: Dataset = {
   businesses: [],

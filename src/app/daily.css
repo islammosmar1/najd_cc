@@ -1640,3 +1640,10 @@
 .daily-product-title small, .daily-section-title p { font-size: 12px; color: #53657a; }
 .daily-row-actions .btn { min-height: 40px; font-size: 12px; }
 @media(max-width:650px) { .daily-tabs strong { font-size: 11px; } }
+
+.shared-stock-note { display:flex; align-items:center; gap:12px; padding:16px 20px; margin-bottom:18px; border:1px solid #dce6f5; border-radius:12px; background:white; color:#294d7b; }
+.shared-stock-note span { font-size:13px; color:#53657a; }
+.sale-product-photo { width:100%; height:120px; object-fit:contain; background:#f7f9fc; border-radius:8px; }
+.product-photo-preview { display:flex; gap:12px; align-items:center; }
+.product-photo-preview img { object-fit:contain; border:1px solid #dce6f5; border-radius:8px; }
+@media(max-width:650px) { .shared-stock-note { flex-wrap:wrap; gap:8px; padding:12px; } .shared-stock-note span { width:100%; font-size:12px; } .sale-product-photo {height:90px;} }

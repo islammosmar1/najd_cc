@@ -9,14 +9,12 @@ export class OperationError extends Error {
 export const productSchema = z.object({
   name: z.string().trim().min(2).max(160),
   sku: z.string().trim().min(1).max(80),
-  barcode: z.string().trim().min(1).max(80),
+  barcode: z.string().trim().max(80).default(""),
   price: z.coerce.number().int().min(0).max(100000000),
   cost: z.coerce.number().int().min(0).max(100000000),
   min_stock: z.coerce.number().int().min(0),
   category: z.string().max(80).default(""),
-  image_url: z
-    .union([z.literal(""), z.url().startsWith("https://")])
-    .default(""),
+  image_url: z.string().max(160000).refine(value => !value || /^https:\/\//.test(value) || /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)).default(""),
   description: z.string().max(2000).default(""),
 });
 export const lineSchema = z.object({

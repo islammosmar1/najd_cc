@@ -81,3 +81,12 @@ test("uncertain checkout failures remain distinguishable from rolled back reques
   assert.equal(new OperationError("rollback", true).rolledBack, true);
   assert.equal(new OperationError("network", false).rolledBack, false);
 });
+test("products can omit physical barcodes and accept safe photo formats", () => {
+  const withoutBarcode = { ...variant };
+  delete withoutBarcode.barcode;
+  const product = { ...withoutBarcode, cost: 0 };
+  assert.equal(productSchema.parse(product).barcode, "");
+  assert.equal(productSchema.safeParse({ ...product, image_url: "data:image/jpeg;base64,AAAA" }).success, true);
+  assert.equal(productSchema.safeParse({ ...product, image_url: "data:image/svg+xml;base64,AAAA" }).success, false);
+  assert.equal(productSchema.safeParse({ ...product, image_url: "javascript:alert(1)" }).success, false);
+});

@@ -1,3 +1,13 @@
+# Shared inventory / optional barcode update — 2026-11-18
+
+- Migration 004 was verified inside a rollback-only transaction on the actual Neon database before application. Existing per-product totals were compared before/after. The 20+15 fixture preserves 35; a pre-merge sale/return restores the new pool; new sales and retries give 33 exactly once; total correction gives 10; stale counts and overselling are rejected. The private pre-merge snapshot and balanced movement records preserve the migration trail.
+- 30 native PostgreSQL transaction/RLS/concurrency checks pass. They use separate test businesses, retaining coverage of legacy branch behavior while the configured najd company uses a shared pool.
+- Five isolated browser checks pass, including image upload/resizing, optional barcode/leading-zero scanning, sale by product name/photo with no physical barcode, one total opening quantity and one sale request. Browser fixtures do not send mail or alter production sales. Actual email/hardware checks remain manual.
+- Production build, TypeScript and ESLint pass. Domain validation covers omitted barcodes and disallows executable image data formats.
+- The server resolves the pool for catalog/quantity/checkout commands. Historical receipt branches remain unchanged; returns retain their receipt branch for authorization and route restored units into the pool.
+
+## Previous verification records
+
 # Simplified desk verification — 2026-11-18
 
 The three-tab interface removes expanded administration, account/expense panels and the separate cash payment dialog. The data endpoint now loads only the catalog, authorized branches, memberships, inventory and sales required by this desk. The retained database transactions and RLS remain unchanged.
