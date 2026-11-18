@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./daily.css";
 export const metadata: Metadata = {
   title: "najd POS | إدارة فروعك بذكاء",
   description: "نظام إدارة المبيعات والمخزون متعدد الفروع",

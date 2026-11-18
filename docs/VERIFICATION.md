@@ -1,5 +1,21 @@
 # Verification — 2026-11-17
 
+## Current Neon / simplified workspace update — 2026-11-18
+
+The active backend is now Neon Free (`free_v3`) with Managed Better Auth. Real, empty company and branch records were created for najd, فرع الستي سنتر, and فرع شارع أبو بكر. The old NAJD COSMETICS project was not modified. Owner assignment requires a provider-verified email matching private server configuration. Credentials and cookie secrets are stored in Vercel/ignored environment files.
+
+- 9 domain checks pass using Node's built-in test runner: barcode identity, repeated scans, no deduction during scanning, stock limits, deduplication, money/tax, typed quantities and uncertain request errors.
+- 28 migration/transaction/RLS checks pass on PGlite.
+- 30 checks pass on native PostgreSQL, including actual simultaneous quick checkouts and duplicate submissions through two connections.
+- The connected Neon database passed a rollback-only live check: named branches, atomic product creation with 20/15 quantities, sale of 2 giving 18/15/33, exactly-once retry and historical purchase cost. All temporary records were rolled back.
+- The Next.js production build and TypeScript check passed. ESLint passed after scanner callback ordering was corrected.
+- Three browser checks passed on the built app: the simplified four-screen desk, protected checkout/barcode errors, email-code form without sending mail, mobile RTL and inventory/accounts navigation. Screenshots are in ignored `.local/najd-desktop.png` and `.local/najd-stock-mobile.png`.
+- Authenticated cashier browser E2E remains skipped without an explicit test account. Real hardware and email delivery are not claimed as tested.
+- Neon rejects the production origin until the website is added in Auth → Configuration → Domains. `INVALID_ORIGIN` was confirmed with a nonexistent-account sign-in request; no email was sent. The user has been given the direct configuration steps. No origin validation has been bypassed or weakened.
+- The package audit reported a transitive glob-matching advisory through Better Auth's optional test-runner peer. Node's built-in runner now executes the domain tests. The flagged Vitest/picomatch/tinyglobby files were absent from the inspected Next.js function traces, but the dependency advisory remains recorded; the old 2026-11-17 audit result below is historical and must not be read as a current all-dependency guarantee. No incompatible forced downgrade was applied.
+
+The new interface uses transactional quick checkout with automatic zero-balance shift creation, editable cart quantities, atomic two-branch opening stock and a compare-and-set inventory count. Account reports recognize later full refunds in the refund period. Visible sessions refresh every 15 seconds and after writes; this is polling rather than websocket realtime.
+
 ## Publication update
 
 The company branding is now **najd**. Source was published to `islammosmar1/najd_cc` after the user explicitly approved its public visibility. The verified Vercel target is `islammosmar1s-projects/najd-pos` (Next.js, Node 24). Production at https://najd-pos.vercel.app returned HTTP 200 with title `najd POS | إدارة فروعك بذكاء`. GitHub `main` is connected for automatic deployments. Supabase credentials remain unconfigured; no independent hosted database was created or changed. Vitest was updated to 5.1.0 after the remote build disclosed development-dependency vulnerabilities; the publication check results are separate from the original core test record below.

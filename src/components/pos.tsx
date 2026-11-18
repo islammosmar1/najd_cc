@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import {
   addScan,
+  setCartQuantity,
   cartTotal,
   ScanGate,
   OperationError,
@@ -42,6 +43,7 @@ export function POS({
   online,
   enabled,
   checkout,
+  onPendingChange,
 }: {
   products: Variant[];
   stock: (id: string) => number;
@@ -51,6 +53,7 @@ export function POS({
   online: boolean;
   enabled: boolean;
   checkout: (p: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState("");
@@ -63,6 +66,7 @@ export function POS({
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [pay, setPay] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const paymentButton = useRef<HTMLButtonElement>(null);
   const gate = useRef(new ScanGate());
   const key = useRef<string | null>(null);
   const lock = useRef(false);
@@ -76,12 +80,21 @@ export function POS({
       }
       if (e.key === "F8") {
         e.preventDefault();
-        setPay(true);
+        paymentButton.current?.click();
       }
     }
+    input.current?.focus();
     window.addEventListener("keydown", hot);
     return () => window.removeEventListener("keydown", hot);
   }, []);
+  useEffect(() => {
+    if (!hasPending) return;
+    const prevent = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", prevent);
+    return () => window.removeEventListener("beforeunload", prevent);
+  }, [hasPending]);
   function add(v: Variant) {
     if (pending.current) {
       toast.error("أعد محاولة تأكيد الطلب المعلق أولاً");
@@ -111,10 +124,41 @@ export function POS({
     setCamera(false);
     input.current?.focus();
   }
+  useEffect(() => {
+    let buffer = "";
+    let last = 0;
+    function hardware(event: KeyboardEvent) {
+      const target = event.target as HTMLElement;
+      if (
+        target.closest(
+          'input,textarea,select,[contenteditable="true"],[role="dialog"]',
+        ) ||
+        document.querySelector('[role="dialog"]') ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      )
+        return;
+      if (event.key === "Enter" && buffer.length >= 3) {
+        event.preventDefault();
+        scan(buffer);
+        buffer = "";
+        return;
+      }
+      if (event.key.length === 1 && event.key !== " ") {
+        if (Date.now() - last > 80) buffer = "";
+        last = Date.now();
+        buffer += event.key;
+        event.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", hardware, true);
+    return () => window.removeEventListener("keydown", hardware, true);
+  });
   async function finalize() {
     if (lock.current) return;
-    if (!online || !enabled || !shift) {
-      toast.error("يلزم اتصال ووردية مفتوحة لإتمام البيع");
+    if (!online || !enabled) {
+      toast.error("يلزم تسجيل الدخول واتصال لإتمام البيع");
       return;
     }
     if (!cart.length || cash < totals.total || discount > totals.subtotal) {
@@ -126,7 +170,7 @@ export function POS({
     key.current ??= crypto.randomUUID();
     pending.current ??= {
       branch_id: branch,
-      shift_id: shift,
+      ...(shift ? { shift_id: shift } : {}),
       key: key.current,
       items: cart.map((l) => ({
         variant_id: l.variant.id,
@@ -137,6 +181,7 @@ export function POS({
       cash,
     };
     setHasPending(true);
+    onPendingChange?.(true);
     try {
       const r = await checkout(pending.current);
       setReceipt({
@@ -163,11 +208,13 @@ export function POS({
       key.current = null;
       pending.current = null;
       setHasPending(false);
+      onPendingChange?.(false);
       toast.success("تم البيع وتحديث المخزون");
     } catch (e) {
       if (e instanceof OperationError && e.rolledBack) {
         pending.current = null;
         setHasPending(false);
+        onPendingChange?.(false);
         key.current = null;
         toast.error(e.message);
       } else toast.error((e as Error).message + " — أعد المحاولة بنفس الطلب.");
@@ -318,7 +365,29 @@ export function POS({
                   >
                     <Minus size={14} />
                   </button>
-                  <b>{l.qty}</b>
+                  <input
+                    aria-label={"كمية " + l.variant.name}
+                    type="number"
+                    min="1"
+                    max={stock(l.variant.id)}
+                    step="1"
+                    value={l.qty}
+                    disabled={hasPending}
+                    onChange={(e) => {
+                      try {
+                        setCart(
+                          setCartQuantity(
+                            cart,
+                            l.variant.id,
+                            Number(e.target.value),
+                            stock(l.variant.id),
+                          ),
+                        );
+                      } catch (error) {
+                        toast.error((error as Error).message);
+                      }
+                    }}
+                  />
                   <button
                     aria-label="زيادة"
                     disabled={hasPending}
@@ -366,8 +435,12 @@ export function POS({
             <b>{money(totals.total)}</b>
           </div>
           <Button
-            disabled={!cart.length || !online || !enabled || !shift}
-            onClick={() => setPay(true)}
+            ref={paymentButton}
+            disabled={!cart.length || !online || !enabled}
+            onClick={() => {
+              if (!hasPending) setCash(totals.total);
+              setPay(true);
+            }}
           >
             إتمام الدفع <span>F8</span>
           </Button>
@@ -382,9 +455,9 @@ export function POS({
             <Trash2 size={15} />
             تفريغ السلة
           </Button>
-          {!shift && (
-            <p className="warning">افتح وردية من صفحة الورديات أولاً</p>
-          )}
+          <p className="pos-help">
+            تنقص الكمية عند تأكيد البيع فقط، من الفرع المختار.
+          </p>
         </div>
       </section>
       <Modal

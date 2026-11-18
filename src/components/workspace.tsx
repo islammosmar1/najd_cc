@@ -46,7 +46,7 @@ import { Toaster, toast } from "sonner";
 import Papa from "papaparse";
 import JsBarcode from "jsbarcode";
 import type { ColumnDef } from "@tanstack/react-table";
-import { browserDb } from "@/lib/supabase/browser";
+import { authClient } from "@/lib/auth/client";
 import { emptyData, variants, type Dataset, type Row } from "@/lib/types";
 import { money } from "@/lib/utils";
 import { dayStart, nextDay, localDay } from "@/lib/dates";
@@ -56,6 +56,7 @@ import { Modal } from "./modal";
 import { ProductForm } from "./product-form";
 import { DataTable } from "./data-table";
 import { POS } from "./pos";
+import { DailyDesk } from "./daily-desk";
 const nav = [
   { id: "dashboard", ar: "لوحة التحكم", en: "Overview", icon: LayoutDashboard },
   { id: "pos", ar: "نقطة البيع", en: "Point of sale", icon: ScanLine },
@@ -100,6 +101,7 @@ export function Workspace({
   signedIn: boolean;
 }) {
   const [page, setPage] = useState("dashboard");
+  const [advanced, setAdvanced] = useState(false);
   const [data, setData] = useState<Dataset>(emptyData);
   const [business, setBusiness] = useState("");
   const [branch, setBranch] = useState("");
@@ -131,6 +133,13 @@ export function Workspace({
       if (branch && !allBranches) q.set("branch", branch);
       const r = await fetch("/api/data?" + q, { cache: "no-store" });
       const json = await r.json();
+      if (r.status === 401) {
+        setSigned(false);
+        setData(emptyData);
+        setBusiness("");
+        setBranch("");
+        return;
+      }
       if (!r.ok) throw Error(json.error);
       setData(json);
       setBusiness((old) => old || json.businesses[0]?.id || "");
@@ -163,29 +172,17 @@ export function Workspace({
   }, [refresh]);
   useEffect(() => {
     if (!configured || !signed) return;
-    const client = browserDb();
-    const channel = client
-      .channel("workspace")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "branch_inventory" },
-        () => {
-          void refresh();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "sales" },
-        () => {
-          void refresh();
-        },
-      )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT")
-          setSync("التحديث اللحظي غير متاح؛ استخدم زر التحديث.");
-      });
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine)
+        void refresh();
+    }, 15000);
+    const visible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", visible);
     return () => {
-      void client.removeChannel(channel);
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", visible);
     };
   }, [configured, signed, refresh]);
   useEffect(() => {
@@ -583,8 +580,49 @@ export function Workspace({
       !(["reports", "expenses"].includes(n.id) && !canFinance && signed) &&
       !(["staff", "settings"].includes(n.id) && !canManage && signed),
   );
+  if (!advanced)
+    return (
+      <DailyDesk
+        data={data}
+        business={business}
+        branch={branch}
+        configured={configured}
+        signed={signed}
+        online={online}
+        loading={loading}
+        error={sync}
+        from={from}
+        to={to}
+        allBranches={allBranches}
+        onAllBranches={setAllBranches}
+        onDates={(start, end) => {
+          setFrom(start);
+          setTo(end);
+        }}
+        onBranch={(id) => {
+          setBranch(id);
+          setAllBranches(false);
+          setSelected([]);
+        }}
+        onSigned={(value) => {
+          setSigned(value);
+          if (!value) {
+            setData(emptyData);
+            setBusiness("");
+            setBranch("");
+            setSync("");
+          }
+        }}
+        refresh={refresh}
+        execute={execute}
+        onAdvanced={() => setAdvanced(true)}
+      />
+    );
   return (
     <div className="app" dir={english ? "ltr" : "rtl"}>
+      <Button className="back-to-daily" onClick={() => setAdvanced(false)}>
+        العودة للبيع والحسابات المبسطة
+      </Button>
       <Toaster richColors position="top-center" dir="rtl" />
       <aside className={"sidebar " + (menu ? "is-open" : "")}>
         <Link className="brand" href="/" aria-label="najd">
@@ -676,7 +714,7 @@ export function Workspace({
               aria-label={signed ? "تسجيل الخروج" : "تسجيل الدخول"}
               onClick={async () => {
                 if (signed) {
-                  await browserDb().auth.signOut();
+                  await authClient.signOut();
                   setSigned(false);
                   setData(emptyData);
                 } else setDialog({ type: "login", title: "تسجيل الدخول" });
@@ -744,7 +782,7 @@ export function Workspace({
                 <span className="badge">الخطوة الأولى</span>
                 <strong>أهلًا بك في najd. لنبدأ بربط مساحة عملك.</strong>
                 <p>
-                  أضف إعدادات Supabase لتفعيل المبيعات والمخزون والتحديث اللحظي.
+                  أضف إعدادات Neon لتفعيل المبيعات والمخزون والتحديث اللحظي.
                 </p>
               </div>
               <Button
@@ -1287,7 +1325,7 @@ export function Workspace({
               <section className="panel">
                 <div className="panel-heading">
                   <h2>المخزون حسب الفرع</h2>
-                  <span className="badge green">تحديث لحظي</span>
+                  <span className="badge green">تحديث تلقائي</span>
                 </div>
                 <DataTable
                   rows={catalog}
@@ -1722,15 +1760,15 @@ export function Workspace({
         {dialog?.type === "setup" && (
           <div className="guide">
             <p>
-              أنشئ مشروع Supabase مستقلًا وطبّق ملف migration، ثم أضف المتغيرين
+              أنشئ مشروع Neon مستقلًا وطبّق ملف migration، ثم أضف المتغيرين
               التاليين في <code>.env.local</code> وأعد تشغيل الخادم.
             </p>
             <pre dir="ltr">
-              NEXT_PUBLIC_SUPABASE_URL=…{"\n"}
-              NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=…
+              DATABASE_URL=…{"\n"}
+              NEON_AUTH_BASE_URL=…
             </pre>
             <p>
-              لا تضع service_role في المتصفح. دليل الإعداد الكامل في README.md.
+              لا تشارك كلمة مرور قاعدة البيانات. دليل الإعداد الكامل في README.md.
             </p>
           </div>
         )}
@@ -1746,7 +1784,7 @@ export function Workspace({
               setBusy(true);
               const f = new FormData(e.currentTarget);
               try {
-                const { error } = await browserDb().auth.signInWithPassword({
+                const { error } = await authClient.signIn.email({
                   email: String(f.get("email")),
                   password: String(f.get("password")),
                 });
@@ -1999,7 +2037,7 @@ export function Workspace({
               {dialog.type === "staff" && (
                 <>
                   <p className="muted">
-                    أنشئ الحساب في Supabase Auth أولاً ثم أدخل UUID. تُربط العضوية
+                    أنشئ الحساب في Neon Auth أولاً ثم أدخل UUID. تُربط العضوية
                     بالفرع النشط.
                   </p>
                   <label>
@@ -2140,7 +2178,7 @@ export function Workspace({
         )}
         {dialog?.type === "guide" && (
           <ol className="guide">
-            <li>اربط Supabase وسجّل الدخول بحساب له عضوية.</li>
+            <li>اربط Neon وسجّل الدخول بحساب له عضوية.</li>
             <li>أضف المنتج وباركوده من صفحة المنتجات.</li>
             <li>استلم المخزون في كل فرع على حدة.</li>
             <li>افتح وردية، ثم انتقل إلى نقطة البيع.</li>

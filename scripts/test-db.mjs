@@ -30,14 +30,30 @@ const db = native
         await native.end();
         // The library can miss the exit event on Windows after taskkill has
         // already removed the process. Bound that wait and verify the PID.
-        const child=cluster.process;
+        const child = cluster.process;
         let timer;
-        try{
-          await Promise.race([cluster.stop(),new Promise(resolve=>{timer=setTimeout(resolve,5000);})]);
-          if(child?.pid){try{process.kill(child.pid,0);throw Error('Temporary PostgreSQL server did not stop');}catch(e){if(e.code!=='ESRCH')throw e;}}
-          cluster.process=undefined;
-          child?.stdin?.destroy();child?.stdout?.destroy();child?.stderr?.destroy();
-        }finally{clearTimeout(timer);}
+        try {
+          await Promise.race([
+            cluster.stop(),
+            new Promise((resolve) => {
+              timer = setTimeout(resolve, 5000);
+            }),
+          ]);
+          if (child?.pid) {
+            try {
+              process.kill(child.pid, 0);
+              throw Error("Temporary PostgreSQL server did not stop");
+            } catch (e) {
+              if (e.code !== "ESRCH") throw e;
+            }
+          }
+          cluster.process = undefined;
+          child?.stdin?.destroy();
+          child?.stdout?.destroy();
+          child?.stderr?.destroy();
+        } finally {
+          clearTimeout(timer);
+        }
       },
     }
   : new PGlite();
@@ -59,23 +75,22 @@ try {
     business = randomUUID(),
     a = randomUUID(),
     b = randomUUID();
-  await db.exec(
-    `create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key,email text);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;`,
+  const migrationDir = new URL("../database/migrations/", import.meta.url);
+  for (const file of (await fs.readdir(migrationDir))
+    .filter((f) => f.endsWith(".sql"))
+    .sort())
+    await db.exec(await fs.readFile(new URL(file, migrationDir), "utf8"));
+  await db.query(
+    "insert into auth.users(id,email) values ($1,$2),($3,$4),($5,$6)",
+    [
+      owner,
+      "owner@example.test",
+      cashier,
+      "cashier@example.test",
+      stranger,
+      "other@example.test",
+    ],
   );
-  await db.exec(
-    await fs.readFile(
-      new URL("../supabase/schema.sql", import.meta.url),
-      "utf8",
-    ),
-  );
-  await db.query("insert into auth.users values ($1,$2),($3,$4),($5,$6)", [
-    owner,
-    "owner@example.test",
-    cashier,
-    "cashier@example.test",
-    stranger,
-    "other@example.test",
-  ]);
   await db.query("insert into businesses(id,name) values($1,$2)", [
     business,
     "متجر التجربة",
@@ -181,9 +196,20 @@ try {
       ),
     );
   });
-  await test('product cost detail endpoint enforces role',async()=>{
-    await assert.rejects(()=>db.query('select product_detail($1,$2,$3)',[business,a,variant]));
-    await user(owner);const detail=(await db.query('select product_detail($1,$2,$3) as r',[business,a,variant])).rows[0].r;assert.equal(detail.cost,1000);await user(cashier);
+  await test("product cost detail endpoint enforces role", async () => {
+    await assert.rejects(() =>
+      db.query("select product_detail($1,$2,$3)", [business, a, variant]),
+    );
+    await user(owner);
+    const detail = (
+      await db.query("select product_detail($1,$2,$3) as r", [
+        business,
+        a,
+        variant,
+      ])
+    ).rows[0].r;
+    assert.equal(detail.cost, 1000);
+    await user(cashier);
   });
   await test("open cashier shift", async () => {
     shift = (await command("shift_open", { opening: 10000 })).id;
@@ -279,10 +305,29 @@ try {
     assert.equal(report.cogs, 2000);
     assert.equal(report.net, 3000);
   });
-  await test('price and cost edits preserve historical sale values and receipt',async()=>{
-    await command('product',{...product,product_id:(await db.query('select product_id from product_variants where id=$1',[variant])).rows[0].product_id,variant_id:variant,cost:1900});
-    const report=(await db.query("select financials($1,$2,now()-interval '1 day',now()+interval '1 day') as f",[business,a])).rows[0].f;assert.equal(report.cogs,2000);
-    await user(cashier);const receipt=await checkout(payload);assert.equal(receipt.items[0].price,2500);assert.equal(receipt.items[0].name,product.name);await user(owner);
+  await test("price and cost edits preserve historical sale values and receipt", async () => {
+    await command("product", {
+      ...product,
+      product_id: (
+        await db.query("select product_id from product_variants where id=$1", [
+          variant,
+        ])
+      ).rows[0].product_id,
+      variant_id: variant,
+      cost: 1900,
+    });
+    const report = (
+      await db.query(
+        "select financials($1,$2,now()-interval '1 day',now()+interval '1 day') as f",
+        [business, a],
+      )
+    ).rows[0].f;
+    assert.equal(report.cogs, 2000);
+    await user(cashier);
+    const receipt = await checkout(payload);
+    assert.equal(receipt.items[0].price, 2500);
+    assert.equal(receipt.items[0].name, product.name);
+    await user(owner);
   });
   await test("return restores stock exactly once", async () => {
     await command("return", { id: sale.id, reason: "طلب العميل" });
@@ -408,6 +453,167 @@ try {
     );
     await db.exec("reset role");
   });
+  await test("exact stock correction is retry safe and rejects a stale count", async () => {
+    await user(owner);
+    const key = randomUUID();
+    const p = {
+      business_id: business,
+      branch_id: a,
+      key,
+      variant_id: variant,
+      quantity: 17,
+      expected_qty: 15,
+      reason: "جرد فعلي",
+    };
+    const set = (p) =>
+      db.query("select set_stock($1::jsonb) as r", [JSON.stringify(p)]);
+    await set(p);
+    await set(p);
+    assert.equal(
+      (
+        await db.query(
+          "select quantity from branch_inventory where branch_id=$1 and variant_id=$2",
+          [a, variant],
+        )
+      ).rows[0].quantity,
+      17,
+    );
+    await assert.rejects(() => set({ ...p, key: randomUUID(), quantity: 18 }));
+    await user(cashier);
+    await assert.rejects(() =>
+      set({ ...p, key: randomUUID(), expected_qty: 17 }),
+    );
+    await user(owner);
+    await set({ ...p, key: randomUUID(), expected_qty: 17, quantity: 15 });
+  });
+  await test("quick checkout creates shift atomically and retries without a second sale", async () => {
+    await user(cashier);
+    const p = {
+      branch_id: a,
+      key: randomUUID(),
+      items: [{ variant_id: variant, qty: 100, discount: 0 }],
+      discount: 0,
+      cash: 1000000,
+    };
+    const quick = (p) =>
+      db.query("select quick_checkout($1::jsonb) as r", [JSON.stringify(p)]);
+    await assert.rejects(() => quick(p));
+    assert.equal(
+      (
+        await db.query(
+          "select count(*)::int as n from cash_shifts where user_id=$1 and closed_at is null",
+          [cashier],
+        )
+      ).rows[0].n,
+      0,
+    );
+    const valid = {
+      ...p,
+      key: randomUUID(),
+      items: [{ variant_id: variant, qty: 1, discount: 0 }],
+      cash: 2500,
+    };
+    await db.exec("set role authenticated");
+    const s = (await quick(valid)).rows[0].r;
+    assert.equal((await quick(valid)).rows[0].r.id, s.id);
+    await db.exec("reset role");
+    assert.equal(
+      (
+        await db.query(
+          "select quantity from branch_inventory where branch_id=$1 and variant_id=$2",
+          [a, variant],
+        )
+      ).rows[0].quantity,
+      14,
+    );
+    const sh = (
+      await db.query(
+        "select id from cash_shifts where user_id=$1 and closed_at is null",
+        [cashier],
+      )
+    ).rows[0].id;
+    await user(owner);
+    await command("return", { id: s.id, reason: "إرجاع تجربة البيع السريع" });
+    await user(cashier);
+    await command("shift_close", { id: sh, closing: 2500 });
+  });
+  await test("product plus opening stock in two branches is one retry-safe transaction", async () => {
+    await user(owner);
+    const p = {
+      ...product,
+      sku: "ATOMIC-NEW",
+      barcode: "SB-ATOMIC-NEW",
+      business_id: business,
+      branch_id: a,
+      key: randomUUID(),
+      initial_stock: [
+        { branch_id: a, quantity: 20 },
+        { branch_id: b, quantity: 15 },
+      ],
+    };
+    const create = (p) =>
+      db.query("select add_product($1::jsonb) as r", [JSON.stringify(p)]);
+    const added = (await create(p)).rows[0].r;
+    await create(p);
+    const v = (
+      await db.query("select id from product_variants where product_id=$1", [
+        added.id,
+      ])
+    ).rows[0].id;
+    const inventory = (
+      await db.query(
+        "select quantity from branch_inventory where variant_id=$1",
+        [v],
+      )
+    ).rows;
+    assert.equal(
+      inventory.reduce((sum, r) => sum + r.quantity, 0),
+      35,
+    );
+    await assert.rejects(() =>
+      create({
+        ...p,
+        key: randomUUID(),
+        sku: "ATOMIC-BAD",
+        barcode: "SB-ATOMIC-BAD",
+        initial_stock: [
+          { branch_id: a, quantity: 2 },
+          { branch_id: b, quantity: -1 },
+        ],
+      }),
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select count(*)::int as n from product_variants where sku='ATOMIC-BAD'",
+        )
+      ).rows[0].n,
+      0,
+    );
+  });
+  await test("later refunds are accounted in their own day using historical cost", async () => {
+    await user(owner);
+    await db.query(
+      "update sales set created_at=date_trunc('day',now())-interval '12 hours' where id=$1",
+      [sale.id],
+    );
+    const old = (
+      await db.query(
+        "select financials($1,$2,date_trunc('day',now())-interval '1 day',date_trunc('day',now())) as r",
+        [business, a],
+      )
+    ).rows[0].r;
+    const now = (
+      await db.query(
+        "select financials($1,$2,date_trunc('day',now()),date_trunc('day',now())+interval '1 day') as r",
+        [business, a],
+      )
+    ).rows[0].r;
+    assert.equal(old.revenue, 5000);
+    assert.equal(old.cogs, 2000);
+    assert.equal(now.revenue, -5000);
+    assert.equal(now.cogs, -2000);
+  });
   if (cluster) {
     const c1 = cluster.getPgClient(),
       c2 = cluster.getPgClient();
@@ -427,9 +633,9 @@ try {
           delta: 1 - current,
           reason: "تجربة آخر وحدة",
         });
-        const s1 = await command("shift_open", { opening: 0 });
+        await command("shift_open", { opening: 0 });
         await user(cashier);
-        const s2 = await command("shift_open", { opening: 0 });
+        await command("shift_open", { opening: 0 });
         await c1.query("select set_config('request.jwt.claim.sub',$1,false)", [
           owner,
         ]);
@@ -438,16 +644,15 @@ try {
         ]);
         const p1 = {
           branch_id: a,
-          shift_id: s1.id,
           key: randomUUID(),
           items: [{ variant_id: variant, qty: 1, discount: 0 }],
           discount: 0,
           cash: 2500,
         };
-        const p2 = { ...p1, shift_id: s2.id, key: randomUUID() };
+        const p2 = { ...p1, key: randomUUID() };
         const results = await Promise.allSettled([
-          c1.query("select checkout($1::jsonb)", [JSON.stringify(p1)]),
-          c2.query("select checkout($1::jsonb)", [JSON.stringify(p2)]),
+          c1.query("select quick_checkout($1::jsonb)", [JSON.stringify(p1)]),
+          c2.query("select quick_checkout($1::jsonb)", [JSON.stringify(p2)]),
         ]);
         assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
         assert.equal(results.filter((r) => r.status === "rejected").length, 1);
@@ -468,26 +673,23 @@ try {
           delta: 1,
           reason: "تجربة منع التكرار",
         });
-        const sh = (
-          await db.query(
-            "select id from cash_shifts where user_id=$1 and closed_at is null",
-            [owner],
-          )
-        ).rows[0].id;
         await c2.query("select set_config('request.jwt.claim.sub',$1,false)", [
           owner,
         ]);
         const p = {
           branch_id: a,
-          shift_id: sh,
           key: randomUUID(),
           items: [{ variant_id: variant, qty: 1, discount: 0 }],
           discount: 0,
           cash: 2500,
         };
         const results = await Promise.all([
-          c1.query("select checkout($1::jsonb) as r", [JSON.stringify(p)]),
-          c2.query("select checkout($1::jsonb) as r", [JSON.stringify(p)]),
+          c1.query("select quick_checkout($1::jsonb) as r", [
+            JSON.stringify(p),
+          ]),
+          c2.query("select quick_checkout($1::jsonb) as r", [
+            JSON.stringify(p),
+          ]),
         ]);
         assert.equal(results[0].rows[0].r.id, results[1].rows[0].r.id);
         assert.equal(

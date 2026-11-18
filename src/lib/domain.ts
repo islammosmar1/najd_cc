@@ -1,10 +1,9 @@
 import { z } from "zod";
 export class OperationError extends Error {
-  constructor(
-    message: string,
-    public readonly rolledBack: boolean,
-  ) {
+  readonly rolledBack: boolean;
+  constructor(message: string, rolledBack: boolean) {
     super(message);
+    this.rolledBack = rolledBack;
   }
 }
 export const productSchema = z.object({
@@ -27,7 +26,7 @@ export const lineSchema = z.object({
 });
 export const checkoutSchema = z.object({
   branch_id: z.uuid(),
-  shift_id: z.uuid(),
+  shift_id: z.uuid().optional(),
   key: z.uuid(),
   items: z.array(lineSchema).min(1).max(200),
   discount: z.number().int().min(0).default(0),
@@ -46,6 +45,27 @@ export type Variant = {
   active: boolean;
 };
 export type CartLine = { variant: Variant; qty: number; discount: number };
+export function setCartQuantity(
+  lines: CartLine[],
+  id: string,
+  quantity: number,
+  available: number,
+) {
+  if (!Number.isInteger(quantity) || quantity < 0)
+    throw Error("أدخل عددًا صحيحًا للكمية");
+  if (quantity > available) throw Error("الكمية المتوفرة غير كافية");
+  return quantity === 0
+    ? lines.filter((l) => l.variant.id !== id)
+    : lines.map((l) =>
+        l.variant.id === id
+          ? {
+              ...l,
+              qty: quantity,
+              discount: Math.min(l.discount, quantity * l.variant.price),
+            }
+          : l,
+      );
+}
 export function cartTotal(lines: CartLine[], discount = 0, taxBps = 0) {
   const subtotal = lines.reduce(
     (sum, l) => sum + l.qty * l.variant.price - l.discount,

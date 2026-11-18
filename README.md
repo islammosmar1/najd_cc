@@ -1,128 +1,85 @@
-# najd POS
+# najd — الحسابات والبيع بالباركود
 
-Company name: **najd**. The application was originally developed as SmartBranch POS.
+[Open najd](https://najd-pos.vercel.app) · [GitHub](https://github.com/islammosmar1/najd_cc)
 
-Live website: **[najd-pos.vercel.app](https://najd-pos.vercel.app)**. Supabase setup is still required to enable sign-in and live business data.
+Arabic RTL retail accounting and POS for **فرع الستي سنتر** and **فرع شارع أبو بكر**. The default workspace has four screens: barcode sales, products/quantities, accounts, and sale history. The previous administration workspace remains available under settings.
 
-Arabic-first retail POS built with Next.js 16, TypeScript, Tailwind 4, shadcn-style Radix components, Supabase Auth/Postgres/Realtime, React Hook Form/Zod, TanStack Table, Recharts, JsBarcode and ZXing. The initially empty repository contained no code to preserve.
+## Backend
 
-**This is an implemented core with explicit remaining work, not a production-readiness certification.** It does not fabricate production data or silently sell offline. The existing NAJD COSMETICS database has not been changed. The requested independent Supabase project has not been provisioned or charged. Source: [islammosmar1/najd_cc](https://github.com/islammosmar1/najd_cc). The connected Vercel project is `najd-pos`; its live deployment still requires the independent Supabase configuration for real transactions.
+The current application uses **Neon PostgreSQL + Managed Better Auth**, provisioned on Neon's `free_v3` plan through Vercel Marketplace. Supabase packages and browser access have been removed. `supabase/` is historical source, not the active migration directory. No existing NAJD COSMETICS database was changed.
 
-## Run locally
+All database access runs through Next.js route handlers. Each request verifies the Neon Auth session and executes business queries in a transaction using a restricted `authenticated` PostgreSQL role and RLS. `auth.users` maps the provider's opaque IDs to application UUIDs; it is not a password table. The approved owner email is server-side configuration and receives owner membership only after Neon confirms the email is verified. Other accounts receive no data access until assigned a membership.
 
-Use Node.js 22+ (tested with 24) and npm.
+The browser never receives a database password, session signing secret, or privileged database connection. Cookie signing uses a high-entropy secret in Vercel. SQL functions check current user, tenant, branch and role. Financial costs remain in a non-exposed private schema. Cashiers cannot directly write stock, read purchase costs or call financial functions.
+
+## Workflows
+
+- Add a product with its barcode, purchase cost, sale price and opening quantities for both branches in one atomic transaction.
+- Scan by USB/Bluetooth HID keyboard scanner with Enter suffix, camera, or manual input. Repeated scans increment the cart. F2 focuses barcode input and F8 opens payment.
+- Change an item's cart quantity directly or with +/−. Scanning itself does not deduct inventory.
+- Confirm cash payment: database prices/tax, sale, payment, historical cost and stock deduction commit together. A shift is opened automatically with zero opening balance if none exists; staff can manage and reconcile shifts in the advanced workspace.
+- Open “المنتجات والكميات” to receive additional units or set a physical stock count. Exact corrections compare the displayed count under a row lock; a concurrent sale prevents stale counts from overwriting newer stock.
+- Every actual stock change has a timestamp, reason, branch and responsible user. Duplicate checkout/quantity requests are protected by idempotency keys.
+- Accounts show sales after refunds, historical COGS, operating expenses and estimated profit by branch/date. Full refunds are recognized in the period when they happen.
+- Authorized screens refresh immediately after writes, on visibility changes, and every 15 seconds while visible. This is polling, not a realtime websocket guarantee. PostgreSQL transactions remain authoritative.
+- Full returns, transfers, CSV import/export, barcode labels, staff membership and tax settings remain in the advanced workspace.
+
+## First login
+
+1. In the Neon resource's Auth → Configuration → Domains, allow `https://najd-pos.vercel.app`. An unlisted origin is rejected by the provider as `INVALID_ORIGIN`.
+2. Open the application and choose “تسجيل الدخول”. Enter the approved owner email and request an email code. Enter the code yourself; never put it in source code or chat logs.
+3. Successful email OTP sign-in verifies mailbox ownership. The server synchronizes the identity and gives the designated owner access to the two real branches. New uninvited accounts have no branch access.
+4. Add actual products and quantities. Production starts empty; no demo sales are shown as real records.
+
+Password login is also available for existing provider accounts. Passwordless first login does not require an administrator-created password. Hardware scanners and thermal printers still need physical acceptance testing.
+
+## Development and configuration
+
+Use Node.js 24 and npm. The repository contains no credentials. Pull the environment only from the verified linked `najd-pos` Vercel project:
 
 ```powershell
 npm ci
-Copy-Item .env.example .env.local
-# Fill in the two NEXT_PUBLIC_SUPABASE_* values
+npx vercel env pull .env.local --yes
+npm run db:migrate
 npm run dev
 ```
 
-Open http://127.0.0.1:3000. Without credentials, the actual application shows an empty setup state and disables transactions. There is no production mock-data fallback. The build and dev commands select webpack for reliable Windows worker behavior.
+Required server environment keys are listed in `.env.example`: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET`, `NAJD_OWNER_EMAIL`. Keep `.env.local` and `.vercel/` ignored. Never use a `NEXT_PUBLIC_` prefix for these keys. The cookie secret must have at least 32 random characters.
 
-## Independent Supabase setup
+Active migrations are in `database/migrations/`, applied in filename order by `scripts/migrate-neon.mjs`. Applied checksums are recorded; edited applied migrations are rejected. Migration 003 creates the empty najd business and the two branches once. Never apply the historical Supabase copies as additional migrations. Schema changes are deployment operations, not run by public HTTP requests.
 
-1. Create a new Supabase project. Keep the database password in a password manager.
-2. Apply the SQL file in `supabase/migrations/` using Supabase SQL Editor, or the CLI migration workflow. `supabase/schema.sql` is its readable source; don't apply both copies.
-3. Enable email/password Auth and set Site URL and permitted redirect URLs for your local/Vercel origin. Disable public signup for an employee-only app. Create the owner account through Auth → Users.
-4. Bootstrap the business and owner membership in SQL Editor as an administrator. Replace the email below. No public self-promotion endpoint exists:
+The Vercel project uses Next.js, Node 24 and Frankfurt functions near the Neon database. Pushing `main` triggers deployment. Verify the latest build reaches READY before declaring a source update live.
 
-```sql
-do $$
-declare uid uuid; biz uuid; br uuid;
-begin
- select id into uid from auth.users where email = 'YOUR_OWNER_EMAIL';
- if uid is null then raise exception 'Create the Auth user first'; end if;
- insert into public.businesses(name) values ('متجري') returning id into biz;
- insert into public.branches(business_id,name,address)
- values (biz,'الفرع الرئيسي','') returning id into br;
- insert into public.memberships(business_id,user_id,role,display_name)
- values (biz,uid,'owner','مدير المتجر');
-end $$;
-```
-
-5. Copy Project URL and **publishable** key to `.env.local`. Never use a service-role key as `NEXT_PUBLIC_*`. Restart the app.
-6. Sign in, add branches and employee memberships. Employee Auth accounts must exist first. Owners may grant branch roles through the app; a global owner/admin membership is deliberately an administrative operation.
-7. The migration adds inventory and sales to `supabase_realtime` when that publication exists. Verify those two tables are enabled under Database → Publications.
-8. Run Supabase security/performance advisors on the new project before using real customer data. Review the business's tax and refund rules independently.
-
-Authorization is enforced by database membership lookups, branch RLS, and narrow transaction functions. Browser writes cannot directly update stock, sales or roles. Financial cost tables are in a non-exposed private schema. Definer functions have an empty search path, explicit user/tenant/role checks, and revoked PUBLIC/anon execution. They are in `private`; public entry points are invoker wrappers. Keep `private` out of exposed API schemas. No service key is required by the application.
-
-## Demo seed and walkthrough
-
-Only use a dedicated **test** project. Apply the migration first. Set these server-side variables in your terminal without committing them:
-
-```text
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-SUPABASE_SERVICE_ROLE_KEY
-DEMO_PASSWORD                 (at least 12 characters)
-SEED_DEMO_CONFIRM=DEDICATED_TEST_PROJECT
-```
-
-Run `node --env-file=.env.local scripts/seed-demo.mjs`. It creates four real Auth users (`owner`, `cashier`, `inventory`, `accountant` at `smartbranch.example`), two branches, six products, independent stock, an open owner shift, a real sale and an expense. The password is the value you supply; it is never printed. Delete the service key from the application environment afterward. The script refuses to duplicate an existing demo. If setup fails partway, inspect the test project and remove the partial demo before retrying; the remote Auth/bootstrap process is not a single transaction.
-
-The first demo product starts with 20 in A and 15 in B. The seed sells two in A through the real checkout function, leaving **18 / 15 / 33**. To repeat manually, create a fresh product, generate its Code 128 barcode, receive +20 in A and +15 in B, open a shift in A, scan twice and pay. Inventory shows A=18, B=15, total=33. Open a second authenticated browser on the other branch to verify the realtime refresh signal. Branch-only cashiers see only authorized branch quantities; owners see both.
-
-## Barcode scanner setup
-
-See [Arabic operator manual](docs/USER_MANUAL_AR.md). USB/Bluetooth scanners must use HID keyboard mode, with Enter as a suffix. F2 focuses the barcode field; F8 opens payment. EAN-13 and UPC-A scanners return their numeric codes; exact barcode lookup identifies the stocked variant. JsBarcode prints generated Code 128 labels. ZXing reads camera barcodes and falls back to keyboard/manual input when camera access fails. Camera access requires HTTPS (or loopback) and user permission. Actual scanners, device cameras and thermal printers still require hardware acceptance testing.
-
-## Tests and verification
+## Tests
 
 ```powershell
 npm test
 npm run test:db
 npm run test:concurrency
+npm run test:live
 npm run lint
 npm run typecheck
 npm run build
-npm start
-# Another terminal; requires Microsoft Edge installed
+npm start -- --port 3001
+# Separate terminal:
+$env:E2E_BASE_URL='http://127.0.0.1:3001'
 npm run test:e2e
 ```
 
-The database test executes the actual schema, RLS, definer/invoker grants and business functions inside PGlite (PostgreSQL). It verifies product uniqueness, branch isolation, retry keys, 18/15/33 checkout, full rollback, insufficient cash/stock, cost confidentiality, historical cost/receipt preservation, financial calculations, returns, transfer transitions and shift closing. `test:concurrency` runs that suite on a native local PostgreSQL server and additionally checks two simultaneous terminals selling the last unit and two simultaneous same-key requests. It binds only to 127.0.0.1:55439, creates its own cluster under ignored `.local/`, and stops it afterward. It does not connect to the hosted Supabase project. Auth is represented by the same `auth.uid()` interface through a test JWT setting; live Supabase Auth still needs separate acceptance testing.
+Domain tests use Node's built-in test runner. Database tests apply the actual Neon migrations to isolated PGlite or native PostgreSQL clusters. Native concurrency tests use independent connections. `test:live` verifies creation/checkout/idempotency/18-15-33 quantities on the connected Neon database inside a transaction that rolls back all fixture data.
 
-Playwright setup/mobile tests run without a database. The live cashier test uses no mocked backend: supply `E2E_EMAIL`, `E2E_PASSWORD`, `E2E_BARCODE`, and optionally `E2E_BASE_URL`, against the seeded test project with an open shift. It deliberately skips if these inputs are missing. Never point it at production: it makes a real sale. The default browser is installed Microsoft Edge; change the channel if your system differs.
+Playwright checks the real built Arabic interface, branch names, barcode input, auth form without sending emails, unauthorized writes and mobile layout. Authenticated cashier E2E requires an explicitly configured test account/product (`E2E_EMAIL`, `E2E_PASSWORD`, `E2E_BARCODE`) and makes a real sale; it skips when not configured. Do not point that test at normal production inventory.
 
-## Deploy to Vercel
+Optional demonstration data can be generated only in a separate disposable database using `scripts/seed-demo.mjs`, an already synchronized test identity via `DEMO_EMAIL`, and `SEED_DEMO_CONFIRM=DISPOSABLE_NEON_TEST_DATABASE`. This has not been run on the real najd database.
 
-1. Push this repository to your Git host and import it in Vercel as Next.js.
-2. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for the intended environments. Use a separate test Supabase project for previews.
-3. Build command: `npm run build`; install command: `npm ci`; no custom output directory.
-4. Set the deployed HTTPS origin in Supabase Auth. Redeploy after changing public environment variables.
-5. Test sign-in, permissions, checkout/retry, return, transfer receipt and realtime in two browsers before real use.
+## Practical limits
 
-The deployment target is the connected Vercel project `najd-pos`. The Sites Worker runtime differs from the explicitly requested Next.js/Vercel server target; this deliverable preserves that stack. No payment provider has been connected. Card success is never simulated.
+- Free Neon has usage/storage quotas; this is not a guarantee of unlimited free operation. Configure separate preview/test databases before running destructive development experiments. The initial integration connected the same resource to development, preview and production.
+- Checkout is online only. Ambiguous network failures keep the sale frozen for a retry with the same key. Do not close/reload that page or create a replacement invoice until the sale's status has been checked. Durable recovery after a browser crash remains future work.
+- Payments are cash. Card-provider integration, split payment, customer/supplier debt ledgers and partial refunds are not implemented.
+- Variant creation, branch-price editing, supplier purchase UI, full English translation and image uploads remain incomplete. Historical schema support is not the same as a finished workflow.
+- Current authorized workspace reads are suitable for a small store but need server-side pagination/aggregation before a large multi-year history. Refresh polling has a 15-second interval.
+- Expenses are recorded independently of the cashier's physical drawer. Cross-shift refunds and opening-float reconciliation need operational review; reports are estimated retail profit, not a certified general ledger.
+- Set an appropriate external backup/export schedule and rehearse restoration. No paid retention, restore guarantee, or recovery rehearsal is implied by choosing the free plan.
 
-## Backup and recovery
-
-Enable Supabase managed backups/PITR appropriate to your plan and retention needs. Store encrypted logical backups separately, including Auth-related recovery requirements and Storage objects (database dumps alone don't back up uploaded objects). Schedule periodic restores into a separate project, apply migrations, verify row counts, memberships, sale totals and inventory-movement reconciliation, and test sign-in before recovery cutover. Record RPO/RTO, rotate exposed credentials and review restored service integrations. Restore procedures must be rehearsed; no backup/restore has been run in this session.
-
-## Implemented
-
-- Responsive Arabic RTL workspace, branch/date filters, loading/empty/error states, toast feedback, accessible dialogs, keyboard shortcuts and printable receipts.
-- Supabase password sign-in/sign-out, server-side user verification, six membership roles, branch RLS, confidential cost storage and audit records.
-- Shared catalog, product create/edit, unique SKU/barcodes, CSV import/export, generated labels and bulk label print, optional HTTPS image URLs.
-- Branch inventory, receiving/adjustments/damage through reasoned movements, low/out-of-stock status and full movement records.
-- USB/HID/manual and camera scanning, event-burst deduplication, repeated scans, stock-limited cart, item/order discount, configurable tax, cash/change and full-sale refund/cancellation database operation.
-- Atomic checkout with database prices, historical cost, ordered stock row locks, no negative stock, per-business idempotency keys and no direct writes.
-- Pending/shipped/received/cancelled transfers, in-transit stock, destination-only receipt and duplicate receipt protection.
-- Open/close cashier shifts, counted versus expected cash; expenses and database-derived financial totals, revenue chart, branch totals, best sellers and sales history.
-- Environment example, source schema/migration, real demo seeder, transaction tests, browser tests and Arabic operator manual.
-
-## Incomplete / production acceptance work
-
-- Independent hosted project, actual credentials, remote migration/advisor verification, deployment and live two-browser realtime acceptance.
-- Supplier purchasing/receiving UI and debt/payment ledger (purchase/supplier tables exist only); customer balances/credit sales and partial payments.
-- Partial item returns, refund attribution across shifts, a dedicated void-sale UI, card-provider integration and split tender.
-- Variant creation/size/color editor and branch-specific-price editor (schema supports them); bulk edit and native XLSX import (CSV only); actual image uploads (URL field only).
-- Register assignment and configurable receipt templates; complete English translation (navigation/direction toggle is partial).
-- Exact period accounting of later refunds: current reports exclude returned/cancelled original sales and are estimates, not a general ledger.
-- External Auth integration tests, payment/hardware tests, monitoring/rate limiting, managed backup restore rehearsal, and load testing. Local real multi-connection concurrency is covered by `test:concurrency`.
-- Large deployments need query-specific server pagination/aggregation rather than loading the authorized workspace. Current reads fetch every 500-row page to avoid silently truncating totals; this is correct for small stores but not tuned for large histories.
-- Pending request keys persist only within the current page session. After a network ambiguity, retry the same open request before reloading; durable client recovery after a page/process crash needs work.
-
-Do not treat the remaining items as implemented or the system as production-ready until its acceptance checks are complete.
+[Arabic operator manual](docs/USER_MANUAL_AR.md) · [Verification record](docs/VERIFICATION.md)

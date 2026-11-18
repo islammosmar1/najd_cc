@@ -1,15 +1,11 @@
-import { configured, db } from "@/lib/supabase/server";
+import { configured, currentUser } from "@/lib/database";
 import { Workspace } from "@/components/workspace";
 export const dynamic = "force-dynamic";
 export default async function Page() {
   const ready = configured();
   let signed = false;
   if (ready) {
-    const client = await db();
-    const {
-      data: { user },
-    } = await client.auth.getUser();
-    signed = Boolean(user);
+    signed = Boolean(await currentUser());
   }
   return <Workspace configured={ready} signedIn={signed} />;
 }

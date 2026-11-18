@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { checkoutSchema, productSchema } from "@/lib/domain";
-import { configured, db } from "@/lib/supabase/server";
+import { configured, currentUser, rpc } from "@/lib/database";
 const uuid = z.uuid();
 const amount = z.number().int().min(0).max(10000000000);
 const schemas = {
   product: productSchema.extend({
     product_id: uuid.optional(),
     variant_id: uuid.optional(),
+    initial_stock: z
+      .array(
+        z.object({
+          branch_id: uuid,
+          quantity: z.number().int().min(0).max(1000000),
+        }),
+      )
+      .max(100)
+      .optional(),
   }),
   stock: z.object({
     variant_id: uuid,
@@ -17,6 +26,12 @@ const schemas = {
       .min(-1000000)
       .max(1000000)
       .refine((x) => x !== 0),
+    reason: z.string().trim().min(3).max(300),
+  }),
+  stock_set: z.object({
+    variant_id: uuid,
+    quantity: z.number().int().min(0).max(1000000),
+    expected_qty: z.number().int().min(0),
     reason: z.string().trim().min(3).max(300),
   }),
   branch: z.object({
@@ -75,26 +90,27 @@ export async function POST(req: NextRequest) {
     );
   if (!configured())
     return NextResponse.json(
-      { error: "أكمل إعداد Supabase أولاً", rolledBack: true },
+      { error: "تفعيل قاعدة البيانات مطلوب أولًا", rolledBack: true },
       { status: 503 },
     );
+  let submitted = false;
   try {
     if (Number(req.headers.get("content-length") || 0) > 200000)
       throw Error("الطلب كبير جدًا");
     const body = await req.json();
-    const client = await db();
-    const {
-      data: { user },
-    } = await client.auth.getUser();
+    const user = await currentUser();
     if (!user)
       return NextResponse.json(
         { error: "يرجى تسجيل الدخول", rolledBack: true },
         { status: 401 },
       );
-    let result;
+    let result: unknown;
     if (body.action === "checkout") {
       const p = checkoutSchema.parse(body.payload);
-      result = await client.rpc("checkout", { p });
+      submitted = true;
+      result = await rpc(user.id, p.shift_id ? "checkout" : "quick_checkout", [
+        p,
+      ]);
     } else {
       const action = z
         .enum(
@@ -108,30 +124,35 @@ export async function POST(req: NextRequest) {
         .object({ business_id: uuid, branch_id: uuid.nullable(), key: uuid })
         .parse(body.payload);
       const p = schemas[action].parse(body.payload);
-      result = await client.rpc("command", { action, p: { ...p, ...common } });
+      const payload = { ...p, ...common };
+      submitted = true;
+      result =
+        action === "stock_set"
+          ? await rpc(user.id, "set_stock", [payload])
+          : action === "product" && "initial_stock" in p && p.initial_stock
+            ? await rpc(user.id, "add_product", [payload])
+            : await rpc(user.id, "command", [action, payload]);
     }
-    if (result.error) {
-      const msg = result.error.message;
-      const readable = /[\u0600-\u06ff]/.test(msg)
-        ? msg
-        : result.error.code === "23505"
-          ? "السجل أو الباركود أو SKU مستخدم بالفعل"
-          : result.error.code === "23514"
-            ? "القيمة المدخلة غير صالحة"
-            : "تعذر حفظ العملية. تحقق من البيانات والصلاحيات ثم أعد المحاولة.";
-      const rolledBack =
-        /^[0-9A-Z]{5}$/.test(result.error.code) ||
-        result.error.code.startsWith("PGRST");
-      return NextResponse.json(
-        { error: readable, rolledBack },
-        { status: rolledBack ? 400 : 502 },
+    return NextResponse.json(result);
+  } catch (error) {
+    const fault = error as { code?: string; message?: string };
+    const rolledBack =
+      !submitted ||
+      Boolean(
+        fault.code &&
+        /^[0-9A-Z]{5}$/.test(fault.code) &&
+        !/^(08|57)/.test(fault.code),
       );
-    }
-    return NextResponse.json(result.data);
-  } catch {
+    const message = /[\u0600-\u06ff]/.test(fault.message || "")
+      ? fault.message
+      : fault.code === "23505"
+        ? "الباركود أو رمز المنتج مستخدم بالفعل"
+        : error instanceof z.ZodError
+          ? "راجع البيانات والحقول المطلوبة"
+          : "تعذر حفظ العملية. تحقق من الاتصال ثم أعد المحاولة بنفس الطلب.";
     return NextResponse.json(
-      { error: "بيانات غير صالحة. راجع الحقول المطلوبة.", rolledBack: true },
-      { status: 400 },
+      { error: message, rolledBack },
+      { status: rolledBack ? 400 : 502 },
     );
   }
 }

@@ -27,6 +27,7 @@ export type Dataset = {
   audit_logs: Row[];
   financial: Record<string, number> | null;
   user_id: string;
+  email_verified?: boolean;
 };
 export const emptyData: Dataset = {
   businesses: [],
