@@ -63,8 +63,22 @@ for (const withBarcode of [true, false]) test(`shared stock: product photo and $
   await page.getByRole("button", { name: /^البيع/ }).click();
   const scanner = page.getByRole("textbox", { name: "باركود المنتج", exact: true });
   if (withBarcode) {
-    await scanner.fill(barcode); await scanner.press("Enter"); await page.waitForTimeout(160);
-    await scanner.fill(barcode); await scanner.press("Enter");
+    await page.addScriptTag({path:"node_modules/jsbarcode/dist/JsBarcode.all.min.js"});
+    const barcodeImage = async (text: string) => Buffer.from(await page.evaluate(text => {
+      const canvas = document.createElement("canvas");
+      const generate = (window as unknown as {JsBarcode:(canvas:HTMLCanvasElement,text:string,options:object)=>void}).JsBarcode;
+      generate(canvas,text,{format:"CODE128",width:3,height:100,margin:24,displayValue:true});
+      return canvas.toDataURL("image/png").split(",")[1];
+    },text),"base64");
+    await page.getByRole("button",{name:"مسح بالكاميرا"}).click();
+    const camera = page.getByRole("dialog");
+    await camera.getByLabel("قراءة باركود من صورة").setInputFiles({name:"unknown.png",mimeType:"image/png",buffer:await barcodeImage("UNKNOWN-128")});
+    await expect(camera.getByText("UNKNOWN-128",{exact:true})).toBeVisible();
+    await expect(camera.getByText(/تمت قراءة الرمز، لكن لم/)).toBeVisible();
+    await camera.getByLabel("قراءة باركود من صورة").setInputFiles({name:"saved-barcode.png",mimeType:"image/png",buffer:await barcodeImage(barcode)});
+    await expect(camera).toHaveCount(0);
+    await page.waitForTimeout(160);
+    await scanner.fill("٠٠٠١٢٣٤٥٦٧٨٩٠"); await page.getByRole("button",{name:"إضافة",exact:true}).click();
   } else {
     const tile = page.getByRole("button", { name:"إضافة منتج اختبار إلى الفاتورة",exact:true });
     await expect(tile.getByRole("img")).toBeVisible();

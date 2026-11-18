@@ -8,6 +8,7 @@ import {
   productSchema,
   checkoutSchema,
   OperationError,
+  normalizeBarcode,
 } from "../src/lib/domain.ts";
 const variant = {
   id: "10000000-0000-4000-8000-000000000001",
@@ -28,6 +29,13 @@ test("repeated scans increment the cart without deducting inventory", () => {
   const cart = addScan(addScan([], variant, available), variant, available);
   assert.equal(cart[0].qty, 2);
   assert.equal(available, 20);
+});
+test("scanner normalization preserves identity and leading zeros", () => {
+  assert.equal(normalizeBarcode("\u200f ٠٠١٢٣۴۵\r\n"), "0012345");
+  assert.equal(normalizeBarcode("００１２３"), "00123");
+  assert.equal(normalizeBarcode("AB 12"), "AB 12");
+  assert.notEqual(normalizeBarcode("00123"), normalizeBarcode("123"));
+  assert.equal(productSchema.parse({ ...variant, barcode: "\u200f٠٠١٢٣", cost: 0 }).barcode, "00123");
 });
 test("cart cannot exceed available stock", () =>
   assert.throws(() => addScan(addScan([], variant, 1), variant, 1)));

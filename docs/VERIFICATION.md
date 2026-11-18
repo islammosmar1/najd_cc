@@ -1,3 +1,11 @@
+# Laptop barcode scanning update — 2026-11-18
+
+The scanner now requests ideal 1920x1080 video, enables TRY_HARDER decoding, allows camera selection when available, and provides a barcode-image fallback even when camera permission/device access fails. Decoded unmatched values are shown explicitly; identical camera results are suppressed within the dialog. Matching normalizes Unicode formatting and Arabic/fullwidth digits while retaining leading zeros and rejecting ambiguous matches. A visible Add button supports manual entry.
+
+Validation: production build, TypeScript, ESLint and 11 domain checks pass. Five isolated browser checks pass, including actual ZXing decoding of generated CODE128 PNG images: an unknown decoded value remains visible; a registered value with leading zeros adds the correct product; Arabic digit manual entry adds the same product. These tests use local routed auth/data fixtures, send no email and create no production sale. The user's physical webcam/focus was not tested. Read-only live diagnostics found three saved barcodes, with no Arabic digits, surrounding spaces or AUTO placeholders; no customer barcode records were changed.
+
+## Earlier verification
+
 # Shared inventory / optional barcode update — 2026-11-18
 
 - Migration 004 was verified inside a rollback-only transaction on the actual Neon database before application. Existing per-product totals were compared before/after. The 20+15 fixture preserves 35; a pre-merge sale/return restores the new pool; new sales and retries give 33 exactly once; total correction gives 10; stale counts and overselling are rejected. The private pre-merge snapshot and balanced movement records preserve the migration trail.

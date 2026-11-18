@@ -1,4 +1,10 @@
 import { z } from "zod";
+export function normalizeBarcode(value: string) {
+  return value.normalize("NFKC")
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "")
+    .replace(/[٠-٩۰-۹]/g, digit => String(digit.charCodeAt(0) - (digit <= "٩" ? 0x660 : 0x6f0)))
+    .trim();
+}
 export class OperationError extends Error {
   readonly rolledBack: boolean;
   constructor(message: string, rolledBack: boolean) {
@@ -9,7 +15,7 @@ export class OperationError extends Error {
 export const productSchema = z.object({
   name: z.string().trim().min(2).max(160),
   sku: z.string().trim().min(1).max(80),
-  barcode: z.string().trim().max(80).default(""),
+  barcode: z.string().trim().max(80).default("").transform(normalizeBarcode),
   price: z.coerce.number().int().min(0).max(100000000),
   cost: z.coerce.number().int().min(0).max(100000000),
   min_stock: z.coerce.number().int().min(0),

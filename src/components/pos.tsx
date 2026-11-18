@@ -16,6 +16,7 @@ import {
   cartTotal,
   ScanGate,
   OperationError,
+  normalizeBarcode,
   type CartLine,
   type Variant,
 } from "@/lib/domain";
@@ -109,20 +110,32 @@ export function POS({
     }
   }
   function scan(text: string) {
-    if (!gate.current.accept(text, Date.now())) return;
-    const v = products.find((p) => p.barcode === text.trim() && p.active);
+    if (pending.current) {
+      toast.error("أعد محاولة تأكيد الطلب المعلق أولاً");
+      return false;
+    }
+    const cleaned = normalizeBarcode(text);
+    setCode(cleaned);
+    if (!gate.current.accept(cleaned, Date.now())) return false;
+    const matches = products.filter((p) => normalizeBarcode(p.barcode) === cleaned && p.active);
+    if (matches.length > 1) {
+      toast.error("هذا الرقم مرتبط بأكثر من منتج. راجع باركود المنتجات أولًا.");
+      return false;
+    }
+    const v = matches[0];
     if (!v) {
       toast.error("الباركود غير معروف. ابحث عن المنتج أو أضفه أولاً.");
-      return;
+      return false;
     }
     if ((cart.find((l) => l.variant.id === v.id)?.qty ?? 0) >= stock(v.id)) {
       toast.error("الكمية المتوفرة غير كافية");
-      return;
+      return false;
     }
     add(v);
     setCode("");
     setCamera(false);
     input.current?.focus();
+    return true;
   }
   useEffect(() => {
     let buffer = "";
@@ -242,9 +255,11 @@ export function POS({
               disabled={hasPending}
             />
           </form>
+          <Button variant="outline" disabled={!code.trim() || hasPending} onClick={() => scan(code)}>إضافة</Button>
           <Button
             variant="outline"
             onClick={() => setCamera(true)}
+            disabled={hasPending}
             aria-label="مسح بالكاميرا"
           >
             <Camera size={19} />

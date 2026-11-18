@@ -1647,3 +1647,9 @@
 .product-photo-preview { display:flex; gap:12px; align-items:center; }
 .product-photo-preview img { object-fit:contain; border:1px solid #dce6f5; border-radius:8px; }
 @media(max-width:650px) { .shared-stock-note { flex-wrap:wrap; gap:8px; padding:12px; } .shared-stock-note span { width:100%; font-size:12px; } .sale-product-photo {height:90px;} }
+
+.camera-preview {position:relative;overflow:hidden;border-radius:10px;background:#101c2a;}
+.camera-preview video {width:100%;max-height:320px;object-fit:contain;display:block;}
+.camera-target {position:absolute;inset:28% 8%;border:2px solid #57e3ab;border-radius:8px;pointer-events:none;}
+.barcode-camera p {font-size:13px;line-height:1.8;}
+@media(max-width:650px){.daily-sell .scanner-box {flex-wrap:wrap}.daily-sell .scanner-box form{flex:1;min-width:130px}.daily-sell .scanner-box>.btn{min-width:42px;padding-inline:9px;}}
