@@ -22,6 +22,7 @@ import {
   type Variant,
 } from "@/lib/domain";
 import { money } from "@/lib/utils";
+import { useScanSound } from "@/lib/use-scan-sound";
 import { Button } from "./ui/button";
 import { Modal } from "./modal";
 import dynamic from "next/dynamic";
@@ -58,6 +59,7 @@ export function POS({
   onPendingChange?: (pending: boolean) => void;
 }) {
   const [cart, setCart] = useState<CartLine[]>([]);
+  const playScanSound = useScanSound();
   const [search, setSearch] = useState("");
   const [code, setCode] = useState("");
   const discount = 0;
@@ -133,6 +135,7 @@ export function POS({
       return "تم التعرف على المنتج، لكن كميته المتوفرة غير كافية.";
     }
     add(v);
+    playScanSound();
     if (source === "keyboard") setCamera(false);
     setCode("");
     input.current?.focus();

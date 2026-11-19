@@ -25,6 +25,7 @@ import { variants, type Dataset, type Row } from "@/lib/types";
 import { normalizeBarcode, type Variant } from "@/lib/domain";
 import { localDay } from "@/lib/dates";
 import { money } from "@/lib/utils";
+import { useScanSound } from "@/lib/use-scan-sound";
 import { Button } from "./ui/button";
 import { Modal } from "./modal";
 import { POS } from "./pos";
@@ -874,6 +875,7 @@ function QuickProductForm({
 }) {
   const [barcode, setBarcode] = useState(product?.barcode?.startsWith("AUTO-") ? "" : product?.barcode || "");
   const [scanningBarcode, setScanningBarcode] = useState(false);
+  const playScanSound = useScanSound();
   const [photo, setPhoto] = useState(product?.image_url || "");
   const [reading, setReading] = useState(false);
   const [sku] = useState(
@@ -962,7 +964,7 @@ function QuickProductForm({
             dir="ltr"
             value={barcode}
             onChange={(e) => setBarcode(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.form?.querySelector<HTMLInputElement>('[name="price"]')?.focus(); } }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (barcode.trim()) playScanSound(); e.currentTarget.form?.querySelector<HTMLInputElement>('[name="price"]')?.focus(); } }}
             placeholder="اكتب الرقم أو امسحه بالقارئ هنا"
           />
           <Button type="button" variant="outline" disabled={busy || reading} onClick={() => setScanningBarcode(value => !value)}>
@@ -976,6 +978,7 @@ function QuickProductForm({
           const value = normalizeBarcode(text);
           if (!value || value.length > 80) return "رقم الباركود يجب أن يكون بين 1 و80 حرفًا.";
           setBarcode(value); setScanningBarcode(false);
+          playScanSound();
           toast.success("تمت قراءة الباركود. احفظ المنتج لتثبيت الرقم.");
           return true;
         }} />

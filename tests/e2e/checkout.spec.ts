@@ -57,6 +57,13 @@ for (const sample of cases) test(`shared stock: product photo and ${sample.forma
     } else await route.fulfill({ status: 400, json: { error: "Unexpected command", rolledBack: true } });
   });
   await page.addInitScript(() => {
+    const soundState = window as unknown as {scanSoundCount:number};
+    soundState.scanSoundCount = 0;
+    const start = OscillatorNode.prototype.start;
+    OscillatorNode.prototype.start = function(when?:number) {
+      soundState.scanSoundCount++;
+      return start.call(this,when);
+    };
     Object.defineProperty(navigator.mediaDevices,"getUserMedia",{value: async () => {
       const canvas = document.createElement("canvas"); canvas.width=1000; canvas.height=600;
       const context=canvas.getContext("2d")!;context.fillStyle="white";context.fillRect(0,0,1000,600);
@@ -106,6 +113,7 @@ for (const sample of cases) test(`shared stock: product photo and ${sample.forma
   expect(commands[0].payload.image_url).toMatch(/^data:image/);
   expect(commands[0].payload.initial_stock).toEqual([{branch_id:other,quantity:35}]);
   await page.getByRole("button", { name: /^البيع/ }).click();
+  await page.evaluate(() => { (window as unknown as {scanSoundCount:number}).scanSoundCount = 0; });
   if (withBarcode) {
     await page.addScriptTag({path:"node_modules/jsbarcode/dist/JsBarcode.all.min.js"});
     const barcodeImage = async (text: string, format = "CODE128") => {
@@ -132,6 +140,7 @@ for (const sample of cases) test(`shared stock: product photo and ${sample.forma
     await camera.getByLabel("قراءة باركود من صورة").setInputFiles({name:"unknown.png",mimeType:"image/png",buffer:await barcodeImage("UNKNOWN-128")});
     await expect(camera.getByText("UNKNOWN-128",{exact:true})).toBeVisible();
     await expect(camera.getByText(/الرقم مقروء، لكنه غير مسجّل/)).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as {scanSoundCount:number}).scanSoundCount)).toBe(0);
     const present = async (text: string) => {
       const png = text ? (await barcodeImage(text,sample.format)).toString("base64") : "";
       await page.evaluate(async ({png,angle,invert}) => {
@@ -148,11 +157,14 @@ for (const sample of cases) test(`shared stock: product photo and ${sample.forma
     await present(barcode);
     const quantity=page.getByRole("spinbutton",{name:"كمية منتج اختبار",exact:true});
     await expect(quantity).toHaveValue("1");
+    expect(await page.evaluate(() => (window as unknown as {scanSoundCount:number}).scanSoundCount)).toBe(1);
     console.log(sample.format + " first video recognition: " + (Date.now()-readStarted) + "ms");
     await page.waitForTimeout(2200);
     await expect(quantity).toHaveValue("1");
+    expect(await page.evaluate(() => (window as unknown as {scanSoundCount:number}).scanSoundCount)).toBe(1);
     await present("");await page.waitForTimeout(1600);await present(barcode);
     await expect(quantity).toHaveValue("2");
+    expect(await page.evaluate(() => (window as unknown as {scanSoundCount:number}).scanSoundCount)).toBe(2);
     await expect(camera).toBeVisible();
     const times=await page.workers().at(-1)!.evaluate(() => (self as unknown as {testDecodeTimes:number[]}).testDecodeTimes);
     times.sort((a,b)=>a-b);console.log(sample.format+" median worker decode: "+times[Math.floor(times.length/2)].toFixed(1)+"ms");
@@ -161,6 +173,7 @@ for (const sample of cases) test(`shared stock: product photo and ${sample.forma
       await page.getByRole("textbox",{name:"باركود المنتج",exact:true}).fill(barcode);
       await page.getByRole("textbox",{name:"باركود المنتج",exact:true}).press("Enter");
       await expect(quantity).toHaveValue("2");
+      expect(await page.evaluate(() => (window as unknown as {scanSoundCount:number}).scanSoundCount)).toBe(3);
       await expect(camera).toHaveCount(0);
       await expect(page.getByRole("button",{name:"تشغيل الكاميرا",exact:true})).toBeVisible();
     }
