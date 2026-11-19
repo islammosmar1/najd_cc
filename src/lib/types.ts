@@ -29,6 +29,7 @@ export type Dataset = {
   user_id: string;
   email_verified?: boolean;
   inventory_branch_id?: string;
+  daily_summary?: {branch_id:string;sales:number;pieces:number;tickets:number;stock:number};
 };
 export const emptyData: Dataset = {
   businesses: [],

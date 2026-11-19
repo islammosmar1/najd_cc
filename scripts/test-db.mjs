@@ -3,18 +3,23 @@ import fs from "node:fs/promises";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { createServer } from "node:net";
 let cluster;
 let native;
 if (process.argv.includes("--native")) {
   const { default: EmbeddedPostgres } = await import("embedded-postgres");
+  const probe=createServer();
+  await new Promise(resolve=>probe.listen(0,"127.0.0.1",resolve));
+  const port=probe.address().port;
+  await new Promise(resolve=>probe.close(resolve));
   cluster = new EmbeddedPostgres({
     databaseDir: path.join(process.cwd(), ".local", "postgres-" + randomUUID()),
     user: "postgres",
     password: randomUUID(),
-    port: 55439,
+    port,
     persistent: true,
     postgresFlags: ["-h", "127.0.0.1"],
-    onLog: () => {},
+    onLog: process.env.DEBUG_PG ? (message) => console.log(String(message).trim()) : () => {},
     onError: (message) => console.error(String(message).trim()),
   });
   await cluster.initialise();
@@ -701,6 +706,20 @@ try {
           ).rows[0].quantity,
           0,
         );
+      });
+      await test("different sale branches compete for the same last pooled unit", async () => {
+        await db.query("insert into inventory_pools(business_id,branch_id) values($1,$2)",[business,a]);
+        await db.query("update branch_inventory set quantity=case when branch_id=$1 then 1 else 0 end where variant_id=$2",[a,variant]);
+        await c1.query("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
+        await c2.query("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
+        const order={branch_id:a,key:randomUUID(),items:[{variant_id:variant,qty:1,discount:0}],discount:0,cash:2500};
+        const attempts=await Promise.allSettled([
+          c1.query("select quick_checkout($1::jsonb)",[JSON.stringify(order)]),
+          c2.query("select quick_checkout($1::jsonb)",[JSON.stringify({...order,branch_id:b,key:randomUUID()})]),
+        ]);
+        assert.equal(attempts.filter(result=>result.status==='fulfilled').length,1);
+        assert.equal(attempts.filter(result=>result.status==='rejected').length,1);
+        assert.equal((await db.query("select quantity from branch_inventory where branch_id=$1 and variant_id=$2",[a,variant])).rows[0].quantity,0);
       });
     } finally {
       await c1.end();

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   ScanLine,
   Package,
@@ -21,13 +22,14 @@ import {
 import { toast, Toaster } from "sonner";
 import { authClient } from "@/lib/auth/client";
 import { variants, type Dataset, type Row } from "@/lib/types";
-import { type Variant } from "@/lib/domain";
+import { normalizeBarcode, type Variant } from "@/lib/domain";
 import { localDay } from "@/lib/dates";
 import { money } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Modal } from "./modal";
 import { POS } from "./pos";
 import { AccountForm } from "./account-form";
+const ProductBarcodeScanner = dynamic(() => import("./camera-scanner").then(module => module.CameraScanner), {ssr:false});
 
 type Props = {
   data: Dataset;
@@ -94,6 +96,7 @@ export function DailyDesk(props: Props) {
     to,
     onAllBranches,
     onDates,
+    onBranch,
     onSigned,
     refresh,
     execute,
@@ -105,6 +108,9 @@ export function DailyDesk(props: Props) {
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
   const branches = data.branches.filter((b) => b.business_id === business);
+  const saleBranches = branches.filter(b => b.id !== data.inventory_branch_id);
+  const summary = data.daily_summary?.branch_id === branch ? data.daily_summary : undefined;
+  const selectedBranch = saleBranches.find(b => b.id === branch);
   const memberships = data.memberships.filter(
     (m) =>
       m.business_id === business &&
@@ -241,6 +247,17 @@ export function DailyDesk(props: Props) {
         </div>
       </header>
       <main className="daily-main">
+        <section className="sale-branch-picker" aria-label="اختر فرع البيع">
+          <strong><Store size={18} /> فرع البيع</strong>
+          {saleBranches.length ? saleBranches.map(item => <Button key={item.id} variant={branch === item.id ? "default" : "outline"} disabled={pending || busy} aria-pressed={branch === item.id} onClick={() => onBranch(item.id)}>{String(item.name)}</Button>) : <span>سجّل الدخول لاختيار الفرع</span>}
+          <small>المخزون إجمالي واحد للفرعين</small>
+        </section>
+        {signed && <section className="today-cards" aria-label="ملخص اليوم">
+          <article><small>مبيعات اليوم · {String(selectedBranch?.name || "اختر الفرع")}</small><strong>{summary ? money(summary.sales) : "—"}</strong></article>
+          <article><small>القطع المباعة اليوم</small><strong>{summary?.pieces ?? "—"}<span> قطعة</span></strong></article>
+          <article><small>فواتير اليوم</small><strong>{summary?.tickets ?? "—"}</strong></article>
+          <article><small>إجمالي المخزون المتوفر</small><strong>{summary?.stock ?? "—"}<span> قطعة</span></strong></article>
+        </section>}
         <div className="shared-stock-note"><Package size={19} /><strong>مخزون إجمالي واحد</strong><span>اختر الشنطة بالاسم أو الصورة · الباركود اختياري</span></div>
         {!configured && <div className="error-banner">تعذر الاتصال بالخدمة. حاول مجددًا لاحقًا.</div>}
         {configured && !signed && (
@@ -315,6 +332,7 @@ export function DailyDesk(props: Props) {
             <div className="daily-section-title">
               <div>
                 <h2>فاتورة بيع جديدة</h2>
+                <strong className="active-sale-branch">{String(selectedBranch?.name || "اختر فرع البيع")}</strong>
                 <p>
                   اختر المنتج بالاسم أو الصورة، أو امسح باركوده. الكمية تنقص من المخزون الإجمالي بعد تأكيد البيع.
                 </p>
@@ -852,6 +870,7 @@ function QuickProductForm({
   onSave: (p: Record<string, unknown>) => Promise<void>;
 }) {
   const [barcode, setBarcode] = useState(product?.barcode?.startsWith("AUTO-") ? "" : product?.barcode || "");
+  const [scanningBarcode, setScanningBarcode] = useState(false);
   const [photo, setPhoto] = useState(product?.image_url || "");
   const [reading, setReading] = useState(false);
   const [sku] = useState(
@@ -936,14 +955,28 @@ function QuickProductForm({
           <input
             name="barcode"
             aria-label="باركود المنتج الجديد"
+            maxLength={80}
             dir="ltr"
             value={barcode}
             onChange={(e) => setBarcode(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.form?.querySelector<HTMLInputElement>('[name="price"]')?.focus(); } }}
-            placeholder="امسح باركود القطعة هنا"
+            placeholder="اكتب الرقم أو امسحه بالقارئ هنا"
           />
+          <Button type="button" variant="outline" disabled={busy || reading} onClick={() => setScanningBarcode(value => !value)}>
+            <ScanLine size={18} />{scanningBarcode ? "إيقاف المسح" : "مسح باركود المنتج"}
+          </Button>
         </div>
       </label>
+      <small className="barcode-save-hint">يُحفظ الرقم المكتوب أو المقروء عند حفظ المنتج، ويمكنك البيع به بعدها.</small>
+      {scanningBarcode && <section aria-label="مسح باركود المنتج الجديد" className="product-barcode-scanner">
+        <ProductBarcodeScanner onScan={text => {
+          const value = normalizeBarcode(text);
+          if (!value || value.length > 80) return "رقم الباركود يجب أن يكون بين 1 و80 حرفًا.";
+          setBarcode(value); setScanningBarcode(false);
+          toast.success("تمت قراءة الباركود. احفظ المنتج لتثبيت الرقم.");
+          return true;
+        }} />
+      </section>}
       <div className="form-grid">
         <label>
           تكلفة الشراء ₪ (اختياري)

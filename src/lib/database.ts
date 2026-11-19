@@ -107,7 +107,7 @@ export async function rpc(
       const p = payload as Record<string, unknown>;
       const business = p.business_id || (await client.query("select business_id from branches where id=$1", [p.branch_id])).rows[0]?.business_id;
       const shared = (await client.query("select branch_id from inventory_pools where business_id=$1", [business])).rows[0]?.branch_id;
-      if (shared && !["return", "cancel_sale"].includes(action)) {
+      if (shared && !["return", "cancel_sale", "checkout", "quick_checkout"].includes(action)) {
         p.branch_id = shared;
         if (name === "quick_checkout") delete p.shift_id;
         if (Array.isArray(p.initial_stock)) p.initial_stock = [{ branch_id: shared, quantity: p.initial_stock.reduce((sum, item) => sum + Number(item.quantity), 0) }];

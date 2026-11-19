@@ -1,3 +1,23 @@
+# Product barcode registration and branch release — 2026-11-19
+
+Product creation/editing now accepts manual/HID barcode entry or an explicit inline camera/image scan. Registration accepts decoded codes without requiring a pre-existing catalog match, fills the text field, preserves leading zeros and does not submit the incomplete product. The operator saves the completed product before the barcode becomes available for sales.
+
+Build, lint and 13 domain checks pass. Three targeted browser checks pass: enroll a CODE128 from actual pixels inside the product form, save it without losing zeros, use that code in a later selected-branch sale, verify branch-specific daily cards and shared inventory; sale without barcode; mobile layout. Browser auth/data/write fixtures are isolated and send no real mail or sale. Live Neon rollback verification confirms stored barcode text matches exactly, selected-branch sale attribution, shared stock, daily totals and returns. The 31-check native PostgreSQL record for migration 005 is from the previous session; no new SQL migration was needed for barcode registration.
+
+The previous commit/push attempt did not execute because automatic approval review reported a usage-limit error; it was not a safety rejection. Publication is being retried in the resumed authorized session.
+
+## Previous verification
+
+# Branch selection and daily cards — 2026-11-18
+
+Migration 005 keeps the selected sale branch on the receipt and cash shift while locking/decrementing the shared inventory row. The API preserves checkout branch attribution and still canonicalizes product/stock writes to the pool. Branch choice is validated against authorized branch data and remembered locally. Four cards show completed sales value, pieces and tickets today at the selected branch, plus shared remaining stock. Daily boundaries use PostgreSQL Asia/Hebron timezone conversion. Historical data requests now fetch only sales/items for the chosen date range.
+
+Validation: 31 native PostgreSQL checks pass, including two different branches concurrently attempting the last pooled unit (only one succeeds). A rollback-only Neon preview of 005 and another check after application verified branch-specific sale IDs and daily 2 pieces/50 ILS versus 1 piece/25 ILS, shared stock 35 ->32, exactly-once retry and correct return/counter behavior. UI fixture verification switches to Abu Bakr, sells there, sees 2 pieces/1 receipt and 33 remaining, then switches to City Center and sees zero pieces while stock stays shared. Build, lint, TypeScript and 13 domain checks pass. Scanner format coverage from the preceding update remains recorded below; no claim of a million-row load test is made.
+
+Capacity facts checked 2026-11-18: official Neon pricing lists 1 GB Postgres storage, 100 CU-hours and 5 GB public network transfer per project/month. Read-only pg_database_size was approximately 10.5 MB, 4 products and 2 receipts before this update. This database size isn't identical to billing/history accounting. Photos currently reside inside product rows, so storage per product varies. Official Vercel terms restrict Hobby to personal/non-commercial use; the connected team reported Hobby. No paid upgrade was activated. These plan limits do not imply a fixed number of products or receipts.
+
+## Earlier verification
+
 # Worker-based multi-format scanner — 2026-11-18
 
 Replaced zxing-js with zxing-wasm 3.1.7 (ZXing-C++). The versioned reader WASM and upstream license are served locally under public/scanner; no CDN or remote image upload is used. An isolated Web Worker serializes decoding, transfers frame buffers, and alternates central crops and full frames. Harder/rotation/inversion passes run adaptively; an explicit inversion pass handles negative linear UPC symbols. Camera focus is set to continuous only when reported as supported. Preview now fills its frame. Browser permission and physical lens/print quality still apply.

@@ -28,6 +28,7 @@ export function Workspace({configured, signedIn}: {configured: boolean; signedIn
         from: dayStart(from),
         to: dayStart(nextDay(to)),
       });
+      if (branch) q.set("metrics_branch", branch);
       if (branch && !allBranches) q.set("branch", branch);
       const r = await fetch("/api/data?" + q, { cache: "no-store" });
       const json = await r.json();
@@ -42,7 +43,12 @@ export function Workspace({configured, signedIn}: {configured: boolean; signedIn
       if (!r.ok) throw Error(json.error);
       setData(json);
       setBusiness((old) => old || json.businesses[0]?.id || "");
-      setBranch((old) => json.inventory_branch_id || old || json.branches[0]?.id || "");
+      setBranch(old => {
+        const choices = json.branches.filter((row: {id:string}) => row.id !== json.inventory_branch_id);
+        if (choices.some((row: {id:string}) => row.id === old)) return old;
+        let saved = "";try {saved=localStorage.getItem("najd-sale-branch:"+(json.businesses[0]?.id || "")) || "";} catch {}
+        return choices.find((row: {id:string}) => row.id === saved)?.id || choices[0]?.id || "";
+      });
       setSync("");
     } catch (e) {
       if (request === generation.current) setSync((e as Error).message);
@@ -117,5 +123,5 @@ export function Workspace({configured, signedIn}: {configured: boolean; signedIn
   return <DailyDesk data={data} business={business} branch={branch} configured={configured} signed={signed}
  online={online} loading={loading} error={sync} from={from} to={to} allBranches={allBranches}
  onAllBranches={setAllBranches} onDates={(from, to) => { setFrom(from); setTo(to); }}
- onBranch={setBranch} onSigned={value => { ++generation.current; setSigned(value); if (!value) { setData(emptyData); setBusiness(""); setBranch(""); setSync(""); } }} refresh={refresh} execute={execute} />;
+ onBranch={id => { setBranch(id);try {localStorage.setItem("najd-sale-branch:"+business,id);} catch {} }} onSigned={value => { ++generation.current; setSigned(value); if (!value) { setData(emptyData); setBusiness(""); setBranch(""); setSync(""); } }} refresh={refresh} execute={execute} />;
 }
