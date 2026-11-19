@@ -110,7 +110,7 @@ export function POS({
       toast.error((e as Error).message);
     }
   }
-  function scan(text: string) {
+  function scan(text: string, source: "keyboard" | "camera" = "keyboard") {
     if (pending.current) {
       toast.error("أعد محاولة تأكيد الطلب المعلق أولاً");
       return false;
@@ -133,6 +133,7 @@ export function POS({
       return "تم التعرف على المنتج، لكن كميته المتوفرة غير كافية.";
     }
     add(v);
+    if (source === "keyboard") setCamera(false);
     setCode("");
     input.current?.focus();
     return true;
@@ -269,7 +270,7 @@ export function POS({
         {camera && enabled && !hasPending && !receipt && (
           <section className="auto-camera" aria-label="قراءة الباركود التلقائية">
             <strong>الكاميرا تقرأ تلقائيًا</strong>
-            <CameraScanner onScan={scan} />
+            <CameraScanner onScan={text => scan(text,"camera")} />
           </section>
         )}
         <input

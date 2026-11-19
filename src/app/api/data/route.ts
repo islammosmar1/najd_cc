@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       true,
     );
     return NextResponse.json(
-      { ...emptyData, ...data, user_id: user.id, email_verified: user.emailVerified },
+      { ...emptyData, ...data, user_id: user.id, user_email: user.email, email_verified: user.emailVerified },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch {

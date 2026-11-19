@@ -49,9 +49,9 @@ test("login offers an email code without requesting a message automatically", as
   await expect(
     page.getByRole("heading", { name: "دخول آمن لحساب najd" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "إرسال رمز إلى البريد" }),
-  ).toBeVisible();
+  await expect(page.getByLabel("كلمة المرور",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"الدخول برمز يصل إلى البريد",exact:true}).click();
+  await expect(page.getByRole("button", { name: "إرسال رمز إلى البريد" })).toBeVisible();
   await expect(page.getByLabel("البريد الإلكتروني")).toBeVisible();
 });
 test("mobile RTL desk has only sale, products and sales history", async ({
@@ -93,9 +93,6 @@ test("real authenticated cashier workflow (explicit test account only)", async (
   await page
     .getByRole("button", { name: "تسجيل الدخول", exact: true })
     .first()
-    .click();
-  await page
-    .getByRole("button", { name: "لديّ كلمة مرور، أريد استخدامها" })
     .click();
   await page.getByLabel("البريد الإلكتروني").fill(process.env.E2E_EMAIL!);
   await page.getByLabel("كلمة المرور").fill(process.env.E2E_PASSWORD!);

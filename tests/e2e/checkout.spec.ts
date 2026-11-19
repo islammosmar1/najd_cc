@@ -66,6 +66,7 @@ for (const sample of cases) test(`shared stock: product photo and ${sample.forma
   });
   await page.goto("/");
   await page.getByRole("button", { name: "تسجيل الدخول", exact: true }).first().click();
+  await page.getByRole("button",{name:"الدخول برمز يصل إلى البريد",exact:true}).click();
   await page.getByLabel("البريد الإلكتروني").fill("ui-test@example.invalid");
   await page.getByRole("button", { name: "إرسال رمز إلى البريد" }).click();
   await page.getByLabel("رمز الدخول").fill("123456");
@@ -155,6 +156,14 @@ for (const sample of cases) test(`shared stock: product photo and ${sample.forma
     await expect(camera).toBeVisible();
     const times=await page.workers().at(-1)!.evaluate(() => (self as unknown as {testDecodeTimes:number[]}).testDecodeTimes);
     times.sort((a,b)=>a-b);console.log(sample.format+" median worker decode: "+times[Math.floor(times.length/2)].toFixed(1)+"ms");
+    if(sample.format === "CODE128") {
+      await quantity.fill("1");
+      await page.getByRole("textbox",{name:"باركود المنتج",exact:true}).fill(barcode);
+      await page.getByRole("textbox",{name:"باركود المنتج",exact:true}).press("Enter");
+      await expect(quantity).toHaveValue("2");
+      await expect(camera).toHaveCount(0);
+      await expect(page.getByRole("button",{name:"تشغيل الكاميرا",exact:true})).toBeVisible();
+    }
   } else {
     const tile = page.getByRole("button", { name:"إضافة منتج اختبار إلى الفاتورة",exact:true });
     await expect(tile.getByRole("img")).toBeVisible();

@@ -56,7 +56,7 @@ type Props = {
 type EditProduct = Variant & { cost?: number; description?: string };
 type DeskDialog = {
   type:
-    "login" | "product" | "stock" | "receipt" | "return";
+    "login" | "password" | "product" | "stock" | "receipt" | "return";
   product?: EditProduct;
   mode?: "add" | "set";
   expected?: number;
@@ -223,6 +223,7 @@ export function DailyDesk(props: Props) {
           </button>
           {signed ? (
             <>
+              <Button variant="ghost" disabled={pending} onClick={() => setDialog({type:"password"})}>كلمة المرور</Button>
               <button
                 className="icon-btn"
                 aria-label="تسجيل الخروج"
@@ -593,8 +594,8 @@ export function DailyDesk(props: Props) {
       </main>
       <Modal
         title={
-          dialog?.type === "login"
-            ? "تسجيل الدخول"
+          dialog?.type === "login" || dialog?.type === "password"
+            ? dialog?.type === "password" ? "تعيين كلمة المرور" : "تسجيل الدخول"
             : dialog?.type === "product"
               ? dialog.product
                 ? "تعديل بيانات المنتج"
@@ -614,8 +615,10 @@ export function DailyDesk(props: Props) {
           if (!busy) setDialog(null);
         }}
       >
-        {dialog?.type === "login" && (
+        {(dialog?.type === "login" || dialog?.type === "password") && (
           <AccountForm
+            initialReset={dialog?.type === "password"}
+            initialEmail={data.user_email || ""}
             onSuccess={() => {
               onSigned(true);
               setDialog(null);

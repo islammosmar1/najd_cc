@@ -1,3 +1,11 @@
+# Password setup and keyboard scanner handoff — 2026-11-19
+
+Password sign-in is now the default, with email-code sign-in retained. A verified-email OTP reset/setup form is available from the login form and the signed-in header. It sends the managed forget-password OTP, verifies it atomically through Neon resetPassword, then signs in using the new password. Mismatch, invalid-code and post-save sign-in failure have distinct Arabic states. Only the authenticated user's email is returned for prefilling; passwords are never stored by application code or in browser storage. The user's requested password has NOT been set by this work: a real verification code and password must be entered by the user inside the site. No real-account reset email was sent by the agent and no provider account was changed.
+
+Build, TypeScript, lint, 13 domain checks and four targeted browser checks pass. Tests cover invalid OTP, confirmation mismatch, success, post-save login failure, OTP fallback and scanned-product sale. Auth requests in browser tests use fixtures and disposable test passwords. A separate real-provider request with a nonexistent example.invalid account and invalid code returned 400 INVALID_OTP; it did not change any real account. Successful keyboard/HID scans stop the sale camera to prevent duplicate capture; camera-origin scans remain continuous.
+
+## Earlier verification
+
 # Product barcode registration and branch release — 2026-11-19
 
 Product creation/editing now accepts manual/HID barcode entry or an explicit inline camera/image scan. Registration accepts decoded codes without requiring a pre-existing catalog match, fills the text field, preserves leading zeros and does not submit the incomplete product. The operator saves the completed product before the barcode becomes available for sales.

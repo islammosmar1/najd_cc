@@ -27,6 +27,7 @@ export type Dataset = {
   audit_logs: Row[];
   financial: Record<string, number> | null;
   user_id: string;
+  user_email?: string;
   email_verified?: boolean;
   inventory_branch_id?: string;
   daily_summary?: {branch_id:string;sales:number;pieces:number;tickets:number;stock:number};
